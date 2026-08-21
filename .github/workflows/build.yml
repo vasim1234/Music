@@ -30,11 +30,20 @@ jobs:
         rm -rf android ios
         flutter create --platforms=android --project-name=music_player .
         flutter clean
-        # Fix pubspec.yaml - remove SDK version constraint
+    
+    - name: Fix pubspec.yaml
+      run: |
+        # Remove strict SDK constraint
         sed -i 's/^sdk: .*/sdk: ">=3.0.0 <4.0.0"/' pubspec.yaml
+        # Also remove any other constraints if present
+        sed -i '/^sdk:/d' pubspec.yaml
+        echo "sdk: \">=3.0.0 <4.0.0\"" >> pubspec.yaml
+        # Show the file to verify
+        cat pubspec.yaml | head -10
     
     - name: Add Packages
       run: |
+        flutter pub get
         flutter pub add audioplayers
         flutter pub add file_picker
         flutter pub add permission_handler
