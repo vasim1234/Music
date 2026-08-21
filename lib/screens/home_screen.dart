@@ -6,9 +6,14 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'equalizer_screen.dart';
+import '../widgets/audio_visualizer.dart';
+import '../services/visualizer_service.dart';
+import '../screens/lyrics_screen.dart';
+import '../screens/audio_effects_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -29,6 +34,70 @@ class _HomeScreenState extends State<HomeScreen> {
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
   StreamSubscription? _stateSub, _durationSub, _positionSub, _completeSub;
+
+  void _showVisualizer() {
+    if (_currentIndex < 0 || _visibleSongs.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Play a song first!")),
+      );
+      return;
+    }
+    VisualizerService.start(_player);
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          height: 250,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.black87,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Column(
+            children: [
+              const Text(
+                "Audio Visualizer",
+                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                "Visualizing:",
+                style: TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+              Text(
+                fileName(_visibleSongs[_currentIndex].path),
+                style: const TextStyle(color: Colors.white70, fontSize: 14),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 20),
+              AudioVisualizer(
+                barCount: 20,
+                color: Colors.deepPurpleAccent,
+                height: 100,
+                animate: true,
+              ),
+              const SizedBox(height: 20),
+              TextButton(
+                onPressed: () {
+                  VisualizerService.stop();
+                  Navigator.pop(context);
+                },
+                child: const Text(
+                  "Close",
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ).then((_) {
+      VisualizerService.stop();
+    });
+  }
 
   @override
   void initState() {
@@ -588,7 +657,49 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const Divider(),
               ListTile(
+                leading: const Icon(Icons.lyrics, color: Colors.pink),
+                title: const Text('Lyrics', style: TextStyle(fontWeight: FontWeight.w600)),
+                onTap: () {
+                  Navigator.pop(context);
+                  if (_currentIndex >= 0 && _visibleSongs.isNotEmpty) {
+                    String songName = fileName(_visibleSongs[_currentIndex].path);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => LyricsScreen(
+                          songName: songName,
+                          artist: 'Local Audio',
+                        ),
+                      ),
+                    );
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Play a song first!')),
+                    );
+                  }
+                },
+              ),
+              ListTile(
                 leading: const Icon(Icons.equalizer, color: Colors.orange),
+                title: const Text('Visualizer', style: TextStyle(fontWeight: FontWeight.w600)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showVisualizer();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.audiotrack, color: Colors.teal),
+                title: const Text('Audio Effects', style: TextStyle(fontWeight: FontWeight.w600)),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const AudioEffectsScreen()),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.equalizer, color: Colors.deepOrange),
                 title: const Text('Equalizer'),
                 onTap: () {
                   Navigator.pop(context);
