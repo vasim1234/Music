@@ -42,13 +42,6 @@ jobs:
         find . -name "build.gradle*" -exec sed -i 's/targetSdkVersion .*/targetSdkVersion 37/g' {} \;
         find . -name "build.gradle*" -exec sed -i 's/minSdk = .*/minSdk = 21/g' {} \;
         find . -name "build.gradle*" -exec sed -i 's/minSdkVersion .*/minSdkVersion 21/g' {} \;
-        
-        # Also explicitly set in app/build.gradle
-        if [ -f "android/app/build.gradle" ]; then
-          sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 37/g' android/app/build.gradle
-          sed -i 's/targetSdkVersion [0-9]*/targetSdkVersion 37/g' android/app/build.gradle
-          sed -i 's/minSdkVersion [0-9]*/minSdkVersion 21/g' android/app/build.gradle
-        fi
 
     - name: Add Packages
       run: |
@@ -319,9 +312,10 @@ jobs:
           Future<void> _addFolder() async {
             await _requestStorage();
             try {
-              // Fix: Use FilePicker.platform.getDirectoryPath() properly
-              String? path = await FilePicker.platform.getDirectoryPath();
-              if (path == null) return;
+              // FIX: Use FilePicker.platform.getDirectoryPath() with proper null check
+              final result = await FilePicker.platform.getDirectoryPath();
+              if (result == null) return;
+              final path = result;
               if (_folders.any((f) => f['path'] == path)) {
                 if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Folder already added.')));
                 return;
