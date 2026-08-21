@@ -22,7 +22,8 @@ jobs:
       uses: subosito/flutter-action@v2
       with:
         channel: stable
-        flutter-version: '3.22.0'  # Older stable version
+        # Latest stable version use karo
+        flutter-version: '3.24.0'
         cache: true
     
     - name: Create Flutter Project
