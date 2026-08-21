@@ -25,25 +25,17 @@ jobs:
         flutter-version: '3.24.0'
         cache: true
     
-    - name: Create Flutter Project
+    - name: Create Flutter Project (No Pub)
       run: |
         rm -rf android ios
-        flutter create --platforms=android --project-name=music_player .
-        flutter clean
-    
-    - name: Fix pubspec.yaml
-      run: |
-        # Remove strict SDK constraint
+        flutter create --platforms=android --project-name=music_player . --no-pub
+        # Now fix pubspec.yaml before pub resolves dependencies
         sed -i 's/^sdk: .*/sdk: ">=3.0.0 <4.0.0"/' pubspec.yaml
-        # Also remove any other constraints if present
-        sed -i '/^sdk:/d' pubspec.yaml
-        echo "sdk: \">=3.0.0 <4.0.0\"" >> pubspec.yaml
-        # Show the file to verify
-        cat pubspec.yaml | head -10
+        # Now run pub get
+        flutter pub get
     
     - name: Add Packages
       run: |
-        flutter pub get
         flutter pub add audioplayers
         flutter pub add file_picker
         flutter pub add permission_handler
