@@ -24,19 +24,32 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Fix Android SDK to 36
+      - name: Fix Android SDK to 36 AND Force All Plugins
         run: |
+          # 1. App build.gradle
           if [ -f "android/app/build.gradle" ]; then
             sed -i 's/compileSdkVersion 34/compileSdkVersion 36/g' android/app/build.gradle
             sed -i 's/targetSdkVersion 34/targetSdkVersion 36/g' android/app/build.gradle
             sed -i 's/minSdkVersion 21/minSdkVersion 24/g' android/app/build.gradle
           fi
 
-      - name: Force file_picker to use API 36
-        run: |
-          # file_picker plugin ke build.gradle ko force karo
-          find ~/.pub-cache -name "build.gradle" -path "*file_picker*" -exec sed -i 's/compileSdkVersion 34/compileSdkVersion 36/g' {} \; 2>/dev/null || true
-          find ~/.pub-cache -name "build.gradle" -path "*file_picker*" -exec sed -i 's/targetSdkVersion 34/targetSdkVersion 36/g' {} \; 2>/dev/null || true
+          # 2. Root build.gradle - Force ALL plugins to use API 36
+          cat >> android/build.gradle << 'INNER_EOF'
+
+          subprojects {
+              afterEvaluate { project ->
+                  if (project.hasProperty('android')) {
+                      project.android {
+                          compileSdkVersion 36
+                          defaultConfig {
+                              minSdkVersion 24
+                              targetSdkVersion 36
+                          }
+                      }
+                  }
+              }
+          }
+          INNER_EOF
 
       - name: Build APK
         run: flutter build apk --debug
