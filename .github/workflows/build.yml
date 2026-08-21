@@ -37,16 +37,26 @@ jobs:
         flutter pub add permission_handler
         flutter pub add shared_preferences
     
-    - name: Fix Android SDK to 36
+    - name: Fix Android SDK
       run: |
-        sed -i 's/compileSdk = [0-9]*/compileSdk = 36/g' android/app/build.gradle
-        sed -i 's/targetSdk = [0-9]*/targetSdk = 36/g' android/app/build.gradle
-        sed -i 's/minSdk = [0-9]*/minSdk = 21/g' android/app/build.gradle
+        # For new Flutter projects with .gradle.kts files
+        if [ -f "android/app/build.gradle.kts" ]; then
+          sed -i 's/compileSdk = [0-9]*/compileSdk = 36/g' android/app/build.gradle.kts
+          sed -i 's/targetSdk = [0-9]*/targetSdk = 36/g' android/app/build.gradle.kts
+          sed -i 's/minSdk = [0-9]*/minSdk = 21/g' android/app/build.gradle.kts
+        else
+          # Fallback for older projects
+          sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 36/g' android/app/build.gradle
+          sed -i 's/targetSdkVersion [0-9]*/targetSdkVersion 36/g' android/app/build.gradle
+          sed -i 's/minSdkVersion [0-9]*/minSdkVersion 21/g' android/app/build.gradle
+        fi
     
     - name: Force All Plugins to API 36
       run: |
-        find . -name "build.gradle" -exec sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 36/g' {} \;
-        find . -name "build.gradle" -exec sed -i 's/targetSdkVersion [0-9]*/targetSdkVersion 36/g' {} \;
+        find . -name "build.gradle*" -exec sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 36/g' {} \;
+        find . -name "build.gradle*" -exec sed -i 's/targetSdkVersion [0-9]*/targetSdkVersion 36/g' {} \;
+        find . -name "build.gradle*" -exec sed -i 's/compileSdk = [0-9]*/compileSdk = 36/g' {} \;
+        find . -name "build.gradle*" -exec sed -i 's/targetSdk = [0-9]*/targetSdk = 36/g' {} \;
     
     - name: Create Equalizer Screen
       run: |
