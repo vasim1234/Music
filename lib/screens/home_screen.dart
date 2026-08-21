@@ -33,9 +33,16 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _stateSub = _player.onPlayerStateChanged.listen((s) { if (!mounted) return; setState(() => _playing = s == PlayerState.playing); });
-    _durationSub = _player.onDurationChanged.listen((d) { if (mounted) setState(() => _duration = d); });
-    _positionSub = _player.onPositionChanged.listen((p) { if (mounted) setState(() => _position = p); });
+    _stateSub = _player.onPlayerStateChanged.listen((s) {
+      if (!mounted) return;
+      setState(() => _playing = s == PlayerState.playing);
+    });
+    _durationSub = _player.onDurationChanged.listen((d) {
+      if (mounted) setState(() => _duration = d);
+    });
+    _positionSub = _player.onPositionChanged.listen((p) {
+      if (mounted) setState(() => _position = p);
+    });
     _completeSub = _player.onPlayerComplete.listen((_) => _next());
     _load();
   }
@@ -50,9 +57,16 @@ class _HomeScreenState extends State<HomeScreen> {
     for (final item in playlistStrings) {
       final parts = item.split('|||');
       if (parts.isEmpty) continue;
-      _playlists.add({'name': parts.first, 'songs': parts.length > 1 ? parts[1].split('|').where((e) => e.isNotEmpty).toList() : <String>[]});
+      _playlists.add({
+        'name': parts.first,
+        'songs': parts.length > 1 ? parts[1].split('|').where((e) => e.isNotEmpty).toList() : <String>[],
+      });
     }
-    _folders..clear()..addAll(folders.map((path) => ({'name': path.split(Platform.pathSeparator).last, 'path': path, 'enabled': true})));
+    _folders..clear()..addAll(folders.map((path) => ({
+      'name': path.split(Platform.pathSeparator).last,
+      'path': path,
+      'enabled': true,
+    })));
     await _scan();
     if (mounted) setState(() {});
   }
@@ -219,73 +233,134 @@ class _HomeScreenState extends State<HomeScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => StatefulBuilder(
-        builder: (context, setModal) => Container(
-          height: MediaQuery.sizeOf(context).height * .94,
-          decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF0F172A), Color(0xFF1E1B4B)], begin: Alignment.topCenter, end: Alignment.bottomCenter), borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
-          child: Column(
-            children: [
-              const SizedBox(height: 12),
-              Container(width: 45, height: 5, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(10))),
-              Padding(
-                padding: const EdgeInsets.all(18),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white, size: 32)),
-                    const Text('Now Playing', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
-                    const SizedBox(width: 48),
-                  ],
-                ),
+        builder: (context, setModal) {
+          return Container(
+            height: MediaQuery.sizeOf(context).height * .94,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0xFF0F172A), Color(0xFF1E1B4B)],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
               ),
-              Container(width: 260, height: 260, decoration: const BoxDecoration(shape: BoxShape.circle, gradient: LinearGradient(colors: [Color(0xFF4C83FF), Color(0xFFD946EF])), child: const Icon(Icons.music_note, size: 120, color: Colors.white)),
-              const SizedBox(height: 25),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 25),
-                child: Text(fileName(_visibleSongs[_currentIndex].path), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 23, fontWeight: FontWeight.bold)),
-              ),
-              const Text('Local Audio', style: TextStyle(color: Colors.white54)),
-              const Spacer(),
-              Slider(
-                value: _position.inMilliseconds.clamp(0, _duration.inMilliseconds).toDouble(),
-                min: 0,
-                max: (_duration.inMilliseconds > 0 ? _duration.inMilliseconds : 1).toDouble(),
-                onChanged: (v) async { await _player.seek(Duration(milliseconds: v.round())); setModal(() {}); },
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 25),
-                child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(_time(_position), style: const TextStyle(color: Colors.white54)), Text(_time(_duration), style: const TextStyle(color: Colors.white54))]),
-              ),
-              const Spacer(),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  IconButton(
-                    iconSize: 30,
-                    onPressed: () async { await _toggleFavorite(_visibleSongs[_currentIndex].path); setModal(() {}); },
-                    icon: Icon(_favorites.contains(_visibleSongs[_currentIndex].path) ? Icons.favorite : Icons.favorite_border, color: Colors.white),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            ),
+            child: Column(
+              children: [
+                const SizedBox(height: 12),
+                Container(width: 45, height: 5, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(10))),
+                Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white, size: 32)),
+                      const Text('Now Playing', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+                      const SizedBox(width: 48),
+                    ],
                   ),
-                  IconButton(iconSize: 48, onPressed: () async { await _previous(); setModal(() {}); }, icon: const Icon(Icons.skip_previous, color: Colors.white)),
-                  Container(
-                    width: 72, height: 72,
-                    decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.purpleAccent),
-                    child: IconButton(
-                      iconSize: 42,
-                      onPressed: () async { if (_playing) await _player.pause(); else await _player.resume(); setModal(() {}); },
-                      icon: Icon(_playing ? Icons.pause : Icons.play_arrow, color: Colors.white),
+                ),
+                Container(
+                  width: 260,
+                  height: 260,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [Color(0xFF4C83FF), Color(0xFFD946EF)],
                     ),
                   ),
-                  IconButton(iconSize: 48, onPressed: () async { await _next(); setModal(() {}); }, icon: const Icon(Icons.skip_next, color: Colors.white)),
-                  IconButton(
-                    iconSize: 28,
-                    onPressed: () => _addToPlaylist(_visibleSongs[_currentIndex]),
-                    icon: const Icon(Icons.playlist_add, color: Colors.white70),
+                  child: const Icon(Icons.music_note, size: 120, color: Colors.white),
+                ),
+                const SizedBox(height: 25),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 25),
+                  child: Text(
+                    fileName(_visibleSongs[_currentIndex].path),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontSize: 23, fontWeight: FontWeight.bold),
                   ),
-                ],
-              ),
-              const SizedBox(height: 45),
-            ],
-          ),
-        ),
+                ),
+                const Text('Local Audio', style: TextStyle(color: Colors.white54)),
+                const Spacer(),
+                Slider(
+                  value: _position.inMilliseconds.clamp(0, _duration.inMilliseconds).toDouble(),
+                  min: 0,
+                  max: (_duration.inMilliseconds > 0 ? _duration.inMilliseconds : 1).toDouble(),
+                  onChanged: (v) async {
+                    await _player.seek(Duration(milliseconds: v.round()));
+                    setModal(() {});
+                  },
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 25),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(_time(_position), style: const TextStyle(color: Colors.white54)),
+                      Text(_time(_duration), style: const TextStyle(color: Colors.white54)),
+                    ],
+                  ),
+                ),
+                const Spacer(),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    IconButton(
+                      iconSize: 30,
+                      onPressed: () async {
+                        await _toggleFavorite(_visibleSongs[_currentIndex].path);
+                        setModal(() {});
+                      },
+                      icon: Icon(
+                        _favorites.contains(_visibleSongs[_currentIndex].path) ? Icons.favorite : Icons.favorite_border,
+                        color: Colors.white,
+                      ),
+                    ),
+                    IconButton(
+                      iconSize: 48,
+                      onPressed: () async {
+                        await _previous();
+                        setModal(() {});
+                      },
+                      icon: const Icon(Icons.skip_previous, color: Colors.white),
+                    ),
+                    Container(
+                      width: 72,
+                      height: 72,
+                      decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.purpleAccent),
+                      child: IconButton(
+                        iconSize: 42,
+                        onPressed: () async {
+                          if (_playing) {
+                            await _player.pause();
+                          } else {
+                            await _player.resume();
+                          }
+                          setModal(() {});
+                        },
+                        icon: Icon(_playing ? Icons.pause : Icons.play_arrow, color: Colors.white),
+                      ),
+                    ),
+                    IconButton(
+                      iconSize: 48,
+                      onPressed: () async {
+                        await _next();
+                        setModal(() {});
+                      },
+                      icon: const Icon(Icons.skip_next, color: Colors.white),
+                    ),
+                    IconButton(
+                      iconSize: 28,
+                      onPressed: () => _addToPlaylist(_visibleSongs[_currentIndex]),
+                      icon: const Icon(Icons.playlist_add, color: Colors.white70),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 45),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -298,9 +373,17 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             const Icon(Icons.library_music, size: 64, color: Colors.black12),
             const SizedBox(height: 12),
-            Text(_view == 'Favorites' ? 'No favorites yet' : _view == 'Recent' ? 'No recent songs' : 'No songs found', style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+            Text(
+              _view == 'Favorites' ? 'No favorites yet' : _view == 'Recent' ? 'No recent songs' : 'No songs found',
+              style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 18),
-            if (_view == 'Songs') FilledButton.icon(onPressed: _addFolder, icon: const Icon(Icons.folder_open), label: const Text('Add Music Folder')),
+            if (_view == 'Songs')
+              FilledButton.icon(
+                onPressed: _addFolder,
+                icon: const Icon(Icons.folder_open),
+                label: const Text('Add Music Folder'),
+              ),
           ],
         ),
       );
@@ -311,14 +394,34 @@ class _HomeScreenState extends State<HomeScreen> {
         final song = _visibleSongs[index];
         final current = index == _currentIndex && _playing;
         return ListTile(
-          leading: CircleAvatar(backgroundColor: current ? Colors.deepPurple : Colors.grey.shade200, child: Icon(Icons.music_note, color: current ? Colors.white : Colors.grey)),
-          title: Text(fileName(song.path), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: current ? FontWeight.bold : FontWeight.w500, color: current ? Colors.deepPurple : Colors.black87)),
+          leading: CircleAvatar(
+            backgroundColor: current ? Colors.deepPurple : Colors.grey.shade200,
+            child: Icon(Icons.music_note, color: current ? Colors.white : Colors.grey),
+          ),
+          title: Text(
+            fileName(song.path),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontWeight: current ? FontWeight.bold : FontWeight.w500,
+              color: current ? Colors.deepPurple : Colors.black87,
+            ),
+          ),
           subtitle: const Text('Local Audio'),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              IconButton(onPressed: () => _toggleFavorite(song.path), icon: Icon(_favorites.contains(song.path) ? Icons.favorite : Icons.favorite_border, color: _favorites.contains(song.path) ? Colors.deepPurpleAccent : Colors.grey)),
-              IconButton(onPressed: () => _addToPlaylist(song), icon: const Icon(Icons.playlist_add, color: Colors.grey)),
+              IconButton(
+                onPressed: () => _toggleFavorite(song.path),
+                icon: Icon(
+                  _favorites.contains(song.path) ? Icons.favorite : Icons.favorite_border,
+                  color: _favorites.contains(song.path) ? Colors.deepPurpleAccent : Colors.grey,
+                ),
+              ),
+              IconButton(
+                onPressed: () => _addToPlaylist(song),
+                icon: const Icon(Icons.playlist_add, color: Colors.grey),
+              ),
             ],
           ),
           onTap: () => _play(song),
@@ -329,7 +432,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _playlistsView() {
     if (_playlists.isEmpty) {
-      return Center(child: FilledButton.icon(onPressed: _createPlaylist, icon: const Icon(Icons.add), label: const Text('Create Playlist')));
+      return Center(
+        child: FilledButton.icon(
+          onPressed: _createPlaylist,
+          icon: const Icon(Icons.add),
+          label: const Text('Create Playlist'),
+        ),
+      );
     }
     return ListView.builder(
       itemCount: _playlists.length,
@@ -342,8 +451,20 @@ class _HomeScreenState extends State<HomeScreen> {
             leading: const CircleAvatar(child: Icon(Icons.queue_music)),
             title: Text(p['name'] as String, style: const TextStyle(fontWeight: FontWeight.bold)),
             subtitle: Text('${songs.length} songs'),
-            trailing: IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red), onPressed: () async { setState(() => _playlists.removeAt(i)); await _save(); }),
-            onTap: () { setState(() { _playlistDetail = p['name'] as String; _view = 'PlaylistDetail'; }); _filter(''); },
+            trailing: IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.red),
+              onPressed: () async {
+                setState(() => _playlists.removeAt(i));
+                await _save();
+              },
+            ),
+            onTap: () {
+              setState(() {
+                _playlistDetail = p['name'] as String;
+                _view = 'PlaylistDetail';
+              });
+              _filter('');
+            },
           ),
         );
       },
@@ -355,7 +476,11 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_view == 'PlaylistDetail') {
       return Column(
         children: [
-          ListTile(leading: const BackButton(), title: Text(_playlistDetail ?? 'Playlist'), onTap: () => _setView('Playlists')),
+          ListTile(
+            leading: const BackButton(),
+            title: Text(_playlistDetail ?? 'Playlist'),
+            onTap: () => _setView('Playlists'),
+          ),
           Expanded(child: _songList()),
         ],
       );
@@ -367,7 +492,15 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: TextField(controller: _search, onChanged: _filter, decoration: const InputDecoration(hintText: 'Search songs...', border: InputBorder.none, prefixIcon: Icon(Icons.search))),
+        title: TextField(
+          controller: _search,
+          onChanged: _filter,
+          decoration: const InputDecoration(
+            hintText: 'Search songs...',
+            border: InputBorder.none,
+            prefixIcon: Icon(Icons.search),
+          ),
+        ),
       ),
       drawer: Drawer(
         child: SafeArea(
@@ -376,7 +509,11 @@ class _HomeScreenState extends State<HomeScreen> {
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(22),
-                decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF1E1B4B), Color(0xFFD946EF])),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFF1E1B4B), Color(0xFFD946EF)],
+                  ),
+                ),
                 child: const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -387,11 +524,42 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
-              ListTile(leading: const Icon(Icons.folder), title: const Text('Choose Folders'), onTap: () { Navigator.pop(context); _addFolder(); }),
-              ListTile(leading: const Icon(Icons.refresh), title: const Text('Scan Music'), onTap: () { Navigator.pop(context); _scan(); }),
+              ListTile(
+                leading: const Icon(Icons.folder),
+                title: const Text('Choose Folders'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _addFolder();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.refresh),
+                title: const Text('Scan Music'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _scan();
+                },
+              ),
               const Divider(),
-              ListTile(leading: const Icon(Icons.equalizer, color: Colors.orange), title: const Text('Equalizer'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const EqualizerScreen())); }),
-              ListTile(leading: const Icon(Icons.folder_special), title: const Text('Manage Folders'), onTap: () { Navigator.pop(context); _showFolders(); }),
+              ListTile(
+                leading: const Icon(Icons.equalizer, color: Colors.orange),
+                title: const Text('Equalizer'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const EqualizerScreen()),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.folder_special),
+                title: const Text('Manage Folders'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showFolders();
+                },
+              ),
             ],
           ),
         ),
@@ -431,8 +599,19 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Container(
           margin: const EdgeInsets.symmetric(horizontal: 3),
           padding: const EdgeInsets.symmetric(vertical: 9),
-          decoration: BoxDecoration(color: selected ? Colors.black : Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
-          child: Text(name, textAlign: TextAlign.center, style: TextStyle(color: selected ? Colors.white : Colors.grey.shade700, fontSize: 12, fontWeight: FontWeight.bold)),
+          decoration: BoxDecoration(
+            color: selected ? Colors.black : Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            name,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: selected ? Colors.white : Colors.grey.shade700,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         ),
       ),
     );
@@ -447,14 +626,30 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Container(
           margin: const EdgeInsets.all(8),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFFFE4F1), Color(0xFFE9D5FF)]), borderRadius: BorderRadius.circular(22)),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFFFFE4F1), Color(0xFFE9D5FF)],
+            ),
+            borderRadius: BorderRadius.circular(22),
+          ),
           child: Row(
             children: [
-              const CircleAvatar(backgroundColor: Colors.black87, child: Icon(Icons.music_note, color: Colors.white)),
+              const CircleAvatar(
+                backgroundColor: Colors.black87,
+                child: Icon(Icons.music_note, color: Colors.white),
+              ),
               const SizedBox(width: 10),
-              Expanded(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis)),
-              IconButton(onPressed: () => _playing ? _player.pause() : _player.resume(), icon: Icon(_playing ? Icons.pause : Icons.play_arrow)),
-              IconButton(onPressed: _next, icon: const Icon(Icons.skip_next)),
+              Expanded(
+                child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+              IconButton(
+                onPressed: () => _playing ? _player.pause() : _player.resume(),
+                icon: Icon(_playing ? Icons.pause : Icons.play_arrow),
+              ),
+              IconButton(
+                onPressed: _next,
+                icon: const Icon(Icons.skip_next),
+              ),
             ],
           ),
         ),
@@ -469,20 +664,38 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const ListTile(title: Text('Music Folders', style: TextStyle(fontWeight: FontWeight.bold))),
-            if (_folders.isEmpty) const Padding(padding: EdgeInsets.all(20), child: Text('No folders added.')),
+            const ListTile(
+              title: Text('Music Folders', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+            if (_folders.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(20),
+                child: Text('No folders added.'),
+              ),
             ...List.generate(_folders.length, (i) {
               final f = _folders[i];
               return SwitchListTile(
                 title: Text(f['name'] as String),
                 subtitle: Text(f['path'] as String, maxLines: 1, overflow: TextOverflow.ellipsis),
                 value: f['enabled'] as bool,
-                onChanged: (v) async { setState(() => f['enabled'] = v); await _save(); await _scan(); if (mounted) Navigator.pop(context); },
+                onChanged: (v) async {
+                  setState(() => f['enabled'] = v);
+                  await _save();
+                  await _scan();
+                  if (mounted) Navigator.pop(context);
+                },
               );
             }),
             Padding(
               padding: const EdgeInsets.all(16),
-              child: FilledButton.icon(onPressed: () { Navigator.pop(context); _addFolder(); }, icon: const Icon(Icons.add), label: const Text('Add Folder')),
+              child: FilledButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _addFolder();
+                },
+                icon: const Icon(Icons.add),
+                label: const Text('Add Folder'),
+              ),
             ),
           ],
         ),
