@@ -24,53 +24,17 @@ jobs:
         channel: 'stable'
         cache: true
 
-    - name: Recreate Android Project & Fix Settings
+    - name: Recreate Android Project & Fix SDK
       run: |
         sed -i 's/3.13.1/3.0.0/g' pubspec.yaml || true
         rm -rf android ios
         flutter create --platforms=android --project-name=music_player .
         
-        sed -i 's/compileSdk = .*/compileSdk = 37/' android/app/build.gradle.kts || true
-        sed -i 's/compileSdkVersion .*/compileSdkVersion 37/' android/app/build.gradle || true
+        # Fix SDK versions
+        sed -i 's/compileSdk = .*/compileSdk = 34/' android/app/build.gradle.kts || true
+        sed -i 's/compileSdkVersion .*/compileSdkVersion 34/' android/app/build.gradle || true
         sed -i 's/targetSdk = .*/targetSdk = 34/' android/app/build.gradle.kts || true
         sed -i 's/targetSdkVersion .*/targetSdkVersion 34/' android/app/build.gradle || true
-
-        # Android Manifest for Storage Permissions
-        cat > android/app/src/main/AndroidManifest.xml << 'MANIFEST_EOF'
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
-    <application
-        android:label="Bhai Bhai Music Player"
-        android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher"
-        android:requestLegacyExternalStorage="true">
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:launchMode="singleTop"
-            android:taskAffinity=""
-            android:theme="@style/LaunchTheme"
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
-            android:hardwareAccelerated="true"
-            android:windowSoftInputMode="adjustResize">
-            <meta-data
-              android:name="io.flutter.embedding.android.NormalTheme"
-              android:resource="@style/NormalTheme"
-              />
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
-            </intent-filter>
-        </activity>
-        <meta-data
-            android:name="flutterEmbedding"
-            android:value="2" />
-    </application>
-</manifest>
-MANIFEST_EOF
 
     - name: Add Packages
       run: |
@@ -80,7 +44,7 @@ MANIFEST_EOF
     - name: Create Equalizer Screen
       run: |
         mkdir -p lib/screens
-        cat > lib/screens/equalizer_screen.dart << 'EOFEQ'
+        cat > lib/screens/equalizer_screen.dart << 'EOF'
         import 'package:flutter/material.dart';
 
         class EqualizerScreen extends StatefulWidget {
@@ -150,9 +114,9 @@ MANIFEST_EOF
             );
           }
         }
-EOFEQ
+        EOF
 
-    - name: Create Home Screen
+    - name: Create Full Home Screen
       run: |
         cat > lib/screens/home_screen.dart << 'HOME_EOF'
         import 'dart:async';
@@ -173,6 +137,7 @@ EOFEQ
         class _HomeScreenState extends State<HomeScreen> {
           final AudioPlayer _player = AudioPlayer();
           final TextEditingController _search = TextEditingController();
+          final List<Map<String, dynamic>> _folders = [];
           final List<File> _songs = [];
           List<File> _visibleSongs = [];
           List<String> _favorites = [];
@@ -200,26 +165,12 @@ EOFEQ
               if (mounted) setState(() => _position = p);
             });
             _completeSub = _player.onPlayerComplete.listen((_) => _next());
-            _initApp();
+            _load();
           }
 
-          Future<void> _initApp() async {
-            await _requestStoragePermissions();
-            await _loadSavedData();
-            await _autoScanMusicDirs();
-          }
-
-          Future<void> _requestStoragePermissions() async {
-            if (!Platform.isAndroid) return;
-            try {
-              await Permission.audio.request();
-              await Permission.storage.request();
-              await Permission.manageExternalStorage.request();
-            } catch (_) {}
-          }
-
-          Future<void> _loadSavedData() async {
+          Future<void> _load() async {
             final p = await SharedPreferences.getInstance();
+            final folders = p.getStringList('folders') ?? [];
             _favorites = p.getStringList('favorites') ?? [];
             _recent = p.getStringList('recent') ?? [];
             final playlistStrings = p.getStringList('playlists') ?? [];
@@ -232,72 +183,54 @@ EOFEQ
                 'songs': parts.length > 1 ? parts[1].split('|').where((e) => e.isNotEmpty).toList() : <String>[],
               });
             }
+            _folders..clear()..addAll(folders.map((path) => ({
+              'name': path.split(Platform.pathSeparator).last,
+              'path': path,
+              'enabled': true,
+            })));
+            await _scan();
+            if (mounted) setState(() {});
           }
 
-          Future<void> _saveData() async {
+          Future<void> _save() async {
             final p = await SharedPreferences.getInstance();
+            await p.setStringList('folders', _folders.map((e) => e['path'] as String).toList());
             await p.setStringList('favorites', _favorites);
             await p.setStringList('recent', _recent);
             await p.setStringList('playlists', _playlists.map((e) => '${e['name']}|||${(e['songs'] as List<String>).join('|')}').toList());
           }
 
-          Future<void> _autoScanMusicDirs() async {
-            final List<String> commonDirs = [
-              '/storage/emulated/0/Music',
-              '/storage/emulated/0/Download',
-              '/storage/emulated/0/snaptube/download/SnapTube Audio',
-              '/storage/emulated/0/SnapTube/Audio',
-            ];
-
-            final foundFiles = <File>[];
-            for (final path in commonDirs) {
-              final dir = Directory(path);
-              if (await dir.exists()) {
-                try {
-                  await for (final entity in dir.list(recursive: true, followLinks: false)) {
-                    if (entity is File && _isAudio(entity.path)) {
-                      if (!foundFiles.any((f) => f.path == entity.path)) {
-                        foundFiles.add(entity);
-                      }
-                    }
-                  }
-                } catch (_) {}
-              }
-            }
-
-            foundFiles.sort((a, b) => fileName(a.path).toLowerCase().compareTo(fileName(b.path).toLowerCase()));
-
-            if (mounted) {
-              setState(() {
-                _songs..clear()..addAll(foundFiles);
-              });
-              _filter(_search.text);
-            }
+          Future<void> _requestStorage() async {
+            if (!Platform.isAndroid) return;
+            try {
+              final sdkPermission = await Permission.audio.request();
+              if (!sdkPermission.isGranted) await Permission.storage.request();
+              final manage = await Permission.manageExternalStorage.status;
+              if (!manage.isGranted) await Permission.manageExternalStorage.request();
+            } catch (e) { print("Permission error: $e"); }
+            await _scan();
           }
 
-          Future<void> _pickAudioFiles() async {
-            await _requestStoragePermissions();
-            FilePickerResult? result = await FilePicker.platform.pickFiles(
-              type: FileType.audio,
-              allowMultiple: true,
-            );
-
-            if (result != null && result.paths.isNotEmpty) {
-              final picked = result.paths.whereType<String>().map((p) => File(p)).toList();
-              setState(() {
-                for (var f in picked) {
-                  if (!_songs.any((s) => s.path == f.path)) {
-                    _songs.add(f);
-                  }
+          Future<void> _scan() async {
+            final result = <File>[];
+            for (final folder in _folders.where((e) => e['enabled'] == true)) {
+              final dir = Directory(folder['path'] as String);
+              if (!await dir.exists()) continue;
+              try {
+                await for (final entity in dir.list(recursive: true, followLinks: false)) {
+                  if (entity is File && _isAudio(entity.path)) result.add(entity);
                 }
-              });
-              _filter(_search.text);
+              } catch (_) {}
             }
+            result.sort((a, b) => fileName(a.path).toLowerCase().compareTo(fileName(b.path).toLowerCase()));
+            if (!mounted) return;
+            setState(() { _songs..clear()..addAll(result); });
+            _filter(_search.text);
           }
 
           bool _isAudio(String path) {
             final p = path.toLowerCase();
-            const exts = ['.mp3', '.m4a', '.aac', '.wav', '.ogg', '.flac'];
+            const exts = ['.mp3', '.m4a', '.aac', '.wav', '.ogg', '.flac', '.wma', '.opus'];
             return exts.any(p.endsWith);
           }
 
@@ -334,7 +267,7 @@ EOFEQ
             _recent.remove(file.path);
             _recent.insert(0, file.path);
             if (_recent.length > 50) _recent.removeLast();
-            await _saveData();
+            await _save();
           }
 
           Future<void> _next() async {
@@ -365,8 +298,32 @@ EOFEQ
               if (_favorites.contains(path)) _favorites.remove(path);
               else _favorites.add(path);
             });
-            await _saveData();
+            await _save();
             _filter(_search.text);
+          }
+
+          Future<void> _addFolder() async {
+            await _requestStorage();
+            try {
+              final path = await FilePicker.platform.getDirectoryPath();
+              if (path == null) return;
+              if (_folders.any((f) => f['path'] == path)) {
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Folder already added.')));
+                return;
+              }
+              setState(() {
+                _folders.add({
+                  'name': path.split(Platform.pathSeparator).last,
+                  'path': path,
+                  'enabled': true,
+                });
+              });
+              await _save();
+              await _scan();
+            } catch (e) {
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Folder error: $e')));
+            }
           }
 
           Future<void> _createPlaylist() async {
@@ -391,7 +348,7 @@ EOFEQ
             setState(() {
               _playlists.add({'name': name, 'songs': <String>[]});
             });
-            await _saveData();
+            await _save();
             _setView('Playlists');
           }
 
@@ -413,7 +370,7 @@ EOFEQ
             if (selected == null) return;
             final songs = _playlists[selected]['songs'] as List<String>;
             if (!songs.contains(song.path)) songs.add(song.path);
-            await _saveData();
+            await _save();
             if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Added to playlist.')));
           }
 
@@ -590,9 +547,9 @@ EOFEQ
                     const SizedBox(height: 18),
                     if (_view == 'Songs')
                       FilledButton.icon(
-                        onPressed: _pickAudioFiles,
-                        icon: const Icon(Icons.audio_file),
-                        label: const Text('Select Music Files'),
+                        onPressed: _addFolder,
+                        icon: const Icon(Icons.folder_open),
+                        label: const Text('Add Music Folder'),
                       ),
                   ],
                 ),
@@ -665,7 +622,7 @@ EOFEQ
                       icon: const Icon(Icons.delete_outline, color: Colors.red),
                       onPressed: () async {
                         setState(() => _playlists.removeAt(i));
-                        await _saveData();
+                        await _save();
                       },
                     ),
                     onTap: () {
@@ -735,19 +692,19 @@ EOFEQ
                         ),
                       ),
                       ListTile(
-                        leading: const Icon(Icons.audio_file),
-                        title: const Text('Add Music Files'),
+                        leading: const Icon(Icons.folder),
+                        title: const Text('Choose Folders'),
                         onTap: () {
                           Navigator.pop(context);
-                          _pickAudioFiles();
+                          _addFolder();
                         },
                       ),
                       ListTile(
                         leading: const Icon(Icons.refresh),
-                        title: const Text('Scan Storage'),
+                        title: const Text('Scan Music'),
                         onTap: () {
                           Navigator.pop(context);
-                          _autoScanMusicDirs();
+                          _scan();
                         },
                       ),
                       const Divider(),
@@ -760,6 +717,14 @@ EOFEQ
                             context,
                             MaterialPageRoute(builder: (_) => const EqualizerScreen()),
                           );
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.folder_special),
+                        title: const Text('Manage Folders'),
+                        onTap: () {
+                          Navigator.pop(context);
+                          _showFolders();
                         },
                       ),
                     ],
@@ -854,6 +819,52 @@ EOFEQ
                       ),
                     ],
                   ),
+                ),
+              ),
+            );
+          }
+
+          void _showFolders() {
+            showModalBottomSheet(
+              context: context,
+              builder: (_) => SafeArea(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const ListTile(
+                      title: Text('Music Folders', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                    if (_folders.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.all(20),
+                        child: Text('No folders added.'),
+                      ),
+                    ...List.generate(_folders.length, (i) {
+                      final f = _folders[i];
+                      return SwitchListTile(
+                        title: Text(f['name'] as String),
+                        subtitle: Text(f['path'] as String, maxLines: 1, overflow: TextOverflow.ellipsis),
+                        value: f['enabled'] as bool,
+                        onChanged: (v) async {
+                          setState(() => f['enabled'] = v);
+                          await _save();
+                          await _scan();
+                          if (mounted) Navigator.pop(context);
+                        },
+                      );
+                    }),
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: FilledButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _addFolder();
+                        },
+                        icon: const Icon(Icons.add),
+                        label: const Text('Add Folder'),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             );
