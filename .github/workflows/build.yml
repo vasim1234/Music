@@ -1,4 +1,4 @@
-Name: Build Music Player APK
+name: Build Music Player APK
 
 on:
   push:
