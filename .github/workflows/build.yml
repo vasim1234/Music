@@ -1,4 +1,4 @@
-name: Build Music Player APK
+Name: Build Music Player APK
 
 on:
   push:
@@ -80,7 +80,7 @@ MANIFEST_EOF
     - name: Create Equalizer Screen
       run: |
         mkdir -p lib/screens
-        cat > lib/screens/equalizer_screen.dart << 'EOF'
+        cat > lib/screens/equalizer_screen.dart << 'EOFEQ'
         import 'package:flutter/material.dart';
 
         class EqualizerScreen extends StatefulWidget {
@@ -150,7 +150,7 @@ MANIFEST_EOF
             );
           }
         }
-        EOF
+EOFEQ
 
     - name: Create Home Screen
       run: |
