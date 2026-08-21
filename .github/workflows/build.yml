@@ -26,14 +26,12 @@ jobs:
 
       - name: Fix Android SDK to 36 AND Force All Plugins
         run: |
-          # 1. App build.gradle
           if [ -f "android/app/build.gradle" ]; then
             sed -i 's/compileSdkVersion 34/compileSdkVersion 36/g' android/app/build.gradle
             sed -i 's/targetSdkVersion 34/targetSdkVersion 36/g' android/app/build.gradle
             sed -i 's/minSdkVersion 21/minSdkVersion 24/g' android/app/build.gradle
           fi
 
-          # 2. Root build.gradle - Force ALL plugins to use API 36
           cat >> android/build.gradle << 'INNER_EOF'
 
           subprojects {
@@ -51,12 +49,24 @@ jobs:
           }
           INNER_EOF
 
+      - name: Clean Build
+        run: |
+          flutter clean
+          flutter pub get
+
       - name: Build APK
-        run: flutter build apk --debug
+        run: flutter build apk --debug --verbose
+
+      - name: List APK files
+        run: |
+          echo "Listing all APK files..."
+          find . -name "*.apk" -type f 2>/dev/null || echo "No APK files found"
+          ls -la build/app/outputs/flutter-apk/ 2>/dev/null || echo "Directory not found"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Bhai-Bhai-Music-APK
           path: build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: warn
           retention-days: 30
