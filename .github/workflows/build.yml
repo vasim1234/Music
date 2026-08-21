@@ -24,24 +24,99 @@ jobs:
         channel: 'stable'
         cache: true
 
-    - name: Fix Pubspec & Project
+    - name: Recreate Android Project & Fix SDK 37
       run: |
         sed -i 's/3.13.1/3.0.0/g' pubspec.yaml || true
         rm -rf android ios
         flutter create --platforms=android --project-name=music_player .
         
-        # Force compileSdk version 37 to satisfy all plugins
+        # Set compileSdk to 37 explicitly
         sed -i 's/compileSdk = .*/compileSdk = 37/' android/app/build.gradle.kts || true
         sed -i 's/compileSdkVersion .*/compileSdkVersion 37/' android/app/build.gradle || true
-        sed -i 's/minSdk = .*/minSdk = 24/' android/app/build.gradle.kts || true
-        sed -i 's/minSdkVersion .*/minSdkVersion 24/' android/app/build.gradle || true
+        sed -i 's/targetSdk = .*/targetSdk = 34/' android/app/build.gradle.kts || true
+        sed -i 's/targetSdkVersion .*/targetSdkVersion 34/' android/app/build.gradle || true
 
-    - name: Install Dependencies
+    - name: Add Packages
       run: |
         flutter pub add audioplayers file_picker permission_handler shared_preferences
         flutter pub get
 
-    - name: Fix Home Screen Code
+    - name: Create Equalizer Screen
+      run: |
+        mkdir -p lib/screens
+        cat > lib/screens/equalizer_screen.dart << 'EOF'
+        import 'package:flutter/material.dart';
+
+        class EqualizerScreen extends StatefulWidget {
+          const EqualizerScreen({super.key});
+
+          @override
+          State<EqualizerScreen> createState() => _EqualizerScreenState();
+        }
+
+        class _EqualizerScreenState extends State<EqualizerScreen> {
+          final List<double> _bands = List.filled(10, 0.0);
+
+          @override
+          Widget build(BuildContext context) {
+            return Scaffold(
+              appBar: AppBar(
+                title: const Text('Equalizer'),
+                backgroundColor: Colors.deepPurple,
+              ),
+              body: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    const Text('10 Band Equalizer', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 20),
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: 10,
+                        itemBuilder: (context, i) {
+                          return Row(
+                            children: [
+                              SizedBox(width: 40, child: Text('${i * 60}Hz', style: const TextStyle(fontSize: 12))),
+                              Expanded(
+                                child: Slider(
+                                  value: _bands[i],
+                                  min: -10,
+                                  max: 10,
+                                  divisions: 20,
+                                  onChanged: (v) => setState(() => _bands[i] = v),
+                                ),
+                              ),
+                              SizedBox(width: 40, child: Text('${_bands[i].round()}dB', style: const TextStyle(fontSize: 12))),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        FilledButton.icon(
+                          onPressed: () => setState(() => _bands.fillRange(0, _bands.length, 0.0)),
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Reset'),
+                        ),
+                        FilledButton.icon(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.check),
+                          label: const Text('Apply'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+        }
+        EOF
+
+    - name: Create Home Screen
       run: |
         cat > lib/screens/home_screen.dart << 'HOME_EOF'
         import 'dart:async';
@@ -52,13 +127,13 @@ jobs:
         import 'package:permission_handler/permission_handler.dart';
         import 'package:shared_preferences/shared_preferences.dart';
         import 'equalizer_screen.dart';
-        
+
         class HomeScreen extends StatefulWidget {
           const HomeScreen({super.key});
           @override
           State<HomeScreen> createState() => _HomeScreenState();
         }
-        
+
         class _HomeScreenState extends State<HomeScreen> {
           final AudioPlayer _player = AudioPlayer();
           final TextEditingController _search = TextEditingController();
@@ -75,7 +150,7 @@ jobs:
           Duration _duration = Duration.zero;
           Duration _position = Duration.zero;
           StreamSubscription? _stateSub, _durationSub, _positionSub, _completeSub;
-        
+
           @override
           void initState() {
             super.initState();
@@ -92,7 +167,7 @@ jobs:
             _completeSub = _player.onPlayerComplete.listen((_) => _next());
             _load();
           }
-        
+
           Future<void> _load() async {
             final p = await SharedPreferences.getInstance();
             final folders = p.getStringList('folders') ?? [];
@@ -116,7 +191,7 @@ jobs:
             await _scan();
             if (mounted) setState(() {});
           }
-        
+
           Future<void> _save() async {
             final p = await SharedPreferences.getInstance();
             await p.setStringList('folders', _folders.map((e) => e['path'] as String).toList());
@@ -124,17 +199,16 @@ jobs:
             await p.setStringList('recent', _recent);
             await p.setStringList('playlists', _playlists.map((e) => '${e['name']}|||${(e['songs'] as List<String>).join('|')}').toList());
           }
-        
+
           Future<void> _requestStorage() async {
             if (!Platform.isAndroid) return;
             try {
               await Permission.audio.request();
               await Permission.storage.request();
-              await Permission.manageExternalStorage.request();
             } catch (_) {}
             await _scan();
           }
-        
+
           Future<void> _scan() async {
             final result = <File>[];
             for (final folder in _folders.where((e) => e['enabled'] == true)) {
@@ -151,18 +225,18 @@ jobs:
             setState(() { _songs..clear()..addAll(result); });
             _filter(_search.text);
           }
-        
+
           bool _isAudio(String path) {
             final p = path.toLowerCase();
             const exts = ['.mp3', '.m4a', '.aac', '.wav', '.ogg', '.flac', '.wma', '.opus'];
             return exts.any(p.endsWith);
           }
-        
+
           String fileName(String path) {
             final name = path.split('/').last;
             return name.replaceFirst(RegExp(r'\.[^.]+$'), '').replaceAll(RegExp(r'\([^)]*\)'), '').replaceAll(RegExp(r'\[[^]]*\]'), '').replaceAll('_', ' ').replaceAll('-', ' ').trim();
           }
-        
+
           List<File> _baseList() {
             switch (_view) {
               case 'Favorites': return _songs.where((f) => _favorites.contains(f.path)).toList();
@@ -174,7 +248,7 @@ jobs:
               default: return List<File>.from(_songs);
             }
           }
-        
+
           void _filter(String query) {
             final base = _baseList();
             final q = query.trim().toLowerCase();
@@ -182,7 +256,7 @@ jobs:
               _visibleSongs = q.isEmpty ? base : base.where((f) => fileName(f.path).toLowerCase().contains(q)).toList();
             });
           }
-        
+
           Future<void> _play(File file) async {
             final index = _visibleSongs.indexWhere((f) => f.path == file.path);
             if (index < 0) return;
@@ -193,30 +267,14 @@ jobs:
             if (_recent.length > 50) _recent.removeLast();
             await _save();
           }
-        
+
           Future<void> _next() async {
             if (_visibleSongs.isEmpty) return;
             final next = _currentIndex + 1;
             if (next >= _visibleSongs.length) return;
             await _play(_visibleSongs[next]);
           }
-        
-          Future<void> _previous() async {
-            if (_visibleSongs.isEmpty) return;
-            final prev = _currentIndex - 1;
-            if (prev < 0) return;
-            await _play(_visibleSongs[prev]);
-          }
-        
-          void _setView(String view) {
-            setState(() {
-              _view = view;
-              if (view != 'PlaylistDetail') _playlistDetail = null;
-              _search.clear();
-            });
-            _filter('');
-          }
-        
+
           Future<void> _toggleFavorite(String path) async {
             setState(() {
               if (_favorites.contains(path)) _favorites.remove(path);
@@ -225,11 +283,11 @@ jobs:
             await _save();
             _filter(_search.text);
           }
-        
+
           Future<void> _addFolder() async {
             await _requestStorage();
             try {
-              String? path = await FilePicker.platform.getDirectoryPath();
+              String? path = await FilePicker.getDirectoryPath();
               if (path == null) return;
               if (_folders.any((f) => f['path'] == path)) return;
               setState(() {
@@ -243,51 +301,7 @@ jobs:
               await _scan();
             } catch (_) {}
           }
-        
-          Future<void> _createPlaylist() async {
-            final controller = TextEditingController();
-            final name = await showDialog<String>(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: const Text('Create Playlist'),
-                content: TextField(controller: controller, decoration: const InputDecoration(hintText: 'Playlist name')),
-                actions: [
-                  TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-                  FilledButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('Create')),
-                ],
-              ),
-            );
-            controller.dispose();
-            if (name == null || name.isEmpty) return;
-            setState(() { _playlists.add({'name': name, 'songs': <String>[]}); });
-            await _save();
-            _setView('Playlists');
-          }
-        
-          Future<void> _addToPlaylist(File song) async {
-            if (_playlists.isEmpty) { await _createPlaylist(); if (_playlists.isEmpty) return; }
-            final selected = await showDialog<int>(
-              context: context,
-              builder: (context) => SimpleDialog(
-                title: const Text('Add to Playlist'),
-                children: List.generate(_playlists.length, (i) => SimpleDialogOption(
-                  onPressed: () => Navigator.pop(context, i),
-                  child: Text(_playlists[i]['name'] as String),
-                )),
-              ),
-            );
-            if (selected == null) return;
-            final songs = _playlists[selected]['songs'] as List<String>;
-            if (!songs.contains(song.path)) songs.add(song.path);
-            await _save();
-          }
-        
-          String _time(Duration d) {
-            final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-            final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-            return '$m:$s';
-          }
-        
+
           Widget _songList() {
             if (_visibleSongs.isEmpty) {
               return Center(
@@ -298,12 +312,11 @@ jobs:
                     const SizedBox(height: 12),
                     const Text('No songs found', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 18),
-                    if (_view == 'Songs')
-                      FilledButton.icon(
-                        onPressed: _addFolder,
-                        icon: const Icon(Icons.folder_open),
-                        label: const Text('Add Music Folder'),
-                      ),
+                    FilledButton.icon(
+                      onPressed: _addFolder,
+                      icon: const Icon(Icons.folder_open),
+                      label: const Text('Add Music Folder'),
+                    ),
                   ],
                 ),
               );
@@ -328,32 +341,37 @@ jobs:
               },
             );
           }
-        
+
           @override
           Widget build(BuildContext context) {
             return Scaffold(
-              appBar: AppBar(title: const Text('Music Player')),
-              body: Column(
-                children: [
-                  Expanded(child: _songList()),
+              appBar: AppBar(
+                title: const Text('Bhai Bhai Music Player'),
+                actions: [
+                  IconButton(
+                    icon: const Icon(Icons.equalizer),
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EqualizerScreen())),
+                  )
                 ],
               ),
+              body: _songList(),
               floatingActionButton: FloatingActionButton(
                 onPressed: _addFolder,
                 child: const Icon(Icons.create_new_folder),
               ),
             );
           }
-        
+
           @override
           void dispose() {
             _player.dispose();
+            _search.dispose();
             super.dispose();
           }
         }
         HOME_EOF
-    
-    - name: Build APK
+
+    - name: Build Debug APK
       run: |
         flutter pub get
         flutter build apk --debug
