@@ -9,11 +9,25 @@ class AudioEffectsScreen extends StatefulWidget {
 }
 
 class _AudioEffectsScreenState extends State<AudioEffectsScreen> {
-  bool _isEnabled = AudioEffectsService.isEnabled;
-  double _bassBoost = AudioEffectsService.bassBoost;
-  double _pitch = AudioEffectsService.pitch;
-  double _speed = AudioEffectsService.speed;
-  ReverbType _reverb = AudioEffectsService.reverb;
+  late bool _isEnabled;
+  late double _bassBoost;
+  late double _pitch;
+  late double _speed;
+  late ReverbType _reverb;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadValues();
+  }
+
+  void _loadValues() {
+    _isEnabled = AudioEffectsService.isEnabled;
+    _bassBoost = AudioEffectsService.bassBoost;
+    _pitch = AudioEffectsService.pitch;
+    _speed = AudioEffectsService.speed;
+    _reverb = AudioEffectsService.reverb;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -38,7 +52,7 @@ class _AudioEffectsScreenState extends State<AudioEffectsScreen> {
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         child: Column(
           children: [
             // Status Card
@@ -73,64 +87,50 @@ class _AudioEffectsScreenState extends State<AudioEffectsScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
 
             // Bass Boost
-            _buildSliderCard(
+            _buildSlider(
               icon: Icons.bass_boost,
               title: 'Bass Boost',
-              subtitle: '${(_bassBoost * 100).round()}%',
               value: _bassBoost,
-              min: 0.0,
-              max: 1.0,
-              divisions: 20,
-              enabled: _isEnabled,
-              onChanged: (value) {
+              displayValue: '${(_bassBoost * 100).round()}%',
+              onChanged: (v) {
                 setState(() {
-                  _bassBoost = value;
-                  AudioEffectsService.setBassBoost(value);
+                  _bassBoost = v;
+                  AudioEffectsService.setBassBoost(v);
                 });
               },
             ),
 
             // Pitch Control
-            _buildSliderCard(
+            _buildSlider(
               icon: Icons.tune,
-              title: 'Pitch Control',
-              subtitle: '${_pitch.round()} semitones',
+              title: 'Pitch',
               value: (_pitch + 12) / 24,
-              min: -12,
-              max: 12,
-              divisions: 24,
-              enabled: _isEnabled,
-              onChanged: (value) {
-                double pitch = (value * 24) - 12;
+              displayValue: '${_pitch.round()} semitones',
+              onChanged: (v) {
+                double pitch = (v * 24) - 12;
                 setState(() {
                   _pitch = pitch;
                   AudioEffectsService.setPitch(pitch);
                 });
               },
-              displayValue: '${_pitch.round()}',
             ),
 
             // Speed Control
-            _buildSliderCard(
+            _buildSlider(
               icon: Icons.speed,
-              title: 'Playback Speed',
-              subtitle: '${_speed.toStringAsFixed(1)}x',
+              title: 'Speed',
               value: (_speed - 0.5) / 1.5,
-              min: 0.5,
-              max: 2.0,
-              divisions: 15,
-              enabled: _isEnabled,
-              onChanged: (value) {
-                double speed = (value * 1.5) + 0.5;
+              displayValue: '${_speed.toStringAsFixed(1)}x',
+              onChanged: (v) {
+                double speed = (v * 1.5) + 0.5;
                 setState(() {
                   _speed = speed;
                   AudioEffectsService.setSpeed(speed);
                 });
               },
-              displayValue: '${_speed.toStringAsFixed(1)}x',
             ),
 
             // Reverb
@@ -213,21 +213,19 @@ class _AudioEffectsScreenState extends State<AudioEffectsScreen> {
                     side: BorderSide(color: Colors.red.shade200),
                   ),
                 ),
-                onPressed: () {
+                onPressed: () async {
+                  await AudioEffectsService.resetAll();
                   setState(() {
-                    AudioEffectsService.resetAll();
-                    _bassBoost = 0.0;
-                    _pitch = 0.0;
-                    _speed = 1.0;
-                    _reverb = ReverbType.none;
-                    _isEnabled = true;
+                    _loadValues();
                   });
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('All effects reset to default'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('All effects reset to default'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
                 },
                 icon: const Icon(Icons.restore),
                 label: const Text('Reset All Effects', style: TextStyle(fontSize: 16)),
@@ -239,17 +237,12 @@ class _AudioEffectsScreenState extends State<AudioEffectsScreen> {
     );
   }
 
-  Widget _buildSliderCard({
+  Widget _buildSlider({
     required IconData icon,
     required String title,
-    required String subtitle,
     required double value,
-    required double min,
-    required double max,
-    required int divisions,
-    required bool enabled,
+    required String displayValue,
     required ValueChanged<double> onChanged,
-    String? displayValue,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
@@ -269,23 +262,23 @@ class _AudioEffectsScreenState extends State<AudioEffectsScreen> {
         children: [
           Row(
             children: [
-              Icon(icon, color: enabled ? Colors.deepPurple : Colors.grey),
+              Icon(icon, color: _isEnabled ? Colors.deepPurple : Colors.grey),
               const SizedBox(width: 12),
               Text(
                 title,
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: enabled ? Colors.black87 : Colors.grey,
+                  color: _isEnabled ? Colors.black87 : Colors.grey,
                 ),
               ),
               const Spacer(),
               Text(
-                displayValue ?? subtitle,
+                displayValue,
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
-                  color: enabled ? Colors.deepPurple : Colors.grey,
+                  color: _isEnabled ? Colors.deepPurple : Colors.grey,
                 ),
               ),
             ],
@@ -294,10 +287,10 @@ class _AudioEffectsScreenState extends State<AudioEffectsScreen> {
           SliderTheme(
             data: SliderThemeData(
               trackHeight: 4,
-              activeTrackColor: enabled ? Colors.deepPurple : Colors.grey.shade400,
-              inactiveTrackColor: enabled ? Colors.deepPurple.shade100 : Colors.grey.shade300,
-              thumbColor: enabled ? Colors.deepPurple : Colors.grey,
-              overlayColor: enabled ? Colors.deepPurple.withOpacity(0.2) : Colors.transparent,
+              activeTrackColor: _isEnabled ? Colors.deepPurple : Colors.grey.shade400,
+              inactiveTrackColor: _isEnabled ? Colors.deepPurple.shade100 : Colors.grey.shade300,
+              thumbColor: _isEnabled ? Colors.deepPurple : Colors.grey,
+              overlayColor: _isEnabled ? Colors.deepPurple.withOpacity(0.2) : Colors.transparent,
               thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
               overlayShape: const RoundSliderOverlayShape(overlayRadius: 20),
             ),
@@ -305,28 +298,9 @@ class _AudioEffectsScreenState extends State<AudioEffectsScreen> {
               value: value.clamp(0.0, 1.0),
               min: 0.0,
               max: 1.0,
-              divisions: divisions,
-              onChanged: enabled ? onChanged : null,
+              divisions: 20,
+              onChanged: _isEnabled ? onChanged : null,
             ),
-          ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                min.toString(),
-                style: TextStyle(
-                  fontSize: 11,
-                  color: enabled ? Colors.grey.shade600 : Colors.grey.shade400,
-                ),
-              ),
-              Text(
-                max.toString(),
-                style: TextStyle(
-                  fontSize: 11,
-                  color: enabled ? Colors.grey.shade600 : Colors.grey.shade400,
-                ),
-              ),
-            ],
           ),
         ],
       ),
