@@ -30,17 +30,333 @@ jobs:
         rm -rf android ios
         flutter create --platforms=android --project-name=music_player .
         
-        # Force compileSdk version 34 to avoid build failure
-        sed -i 's/compileSdk = .*/compileSdk = 34/' android/app/build.gradle.kts || true
-        sed -i 's/compileSdkVersion .*/compileSdkVersion 34/' android/app/build.gradle || true
+        # Force compileSdk version 37 to satisfy all plugins
+        sed -i 's/compileSdk = .*/compileSdk = 37/' android/app/build.gradle.kts || true
+        sed -i 's/compileSdkVersion .*/compileSdkVersion 37/' android/app/build.gradle || true
+        sed -i 's/minSdk = .*/minSdk = 24/' android/app/build.gradle.kts || true
+        sed -i 's/minSdkVersion .*/minSdkVersion 24/' android/app/build.gradle || true
 
     - name: Install Dependencies
       run: |
         flutter pub add audioplayers file_picker permission_handler shared_preferences
         flutter pub get
 
+    - name: Fix Home Screen Code
+      run: |
+        cat > lib/screens/home_screen.dart << 'HOME_EOF'
+        import 'dart:async';
+        import 'dart:io';
+        import 'package:audioplayers/audioplayers.dart';
+        import 'package:file_picker/file_picker.dart';
+        import 'package:flutter/material.dart';
+        import 'package:permission_handler/permission_handler.dart';
+        import 'package:shared_preferences/shared_preferences.dart';
+        import 'equalizer_screen.dart';
+        
+        class HomeScreen extends StatefulWidget {
+          const HomeScreen({super.key});
+          @override
+          State<HomeScreen> createState() => _HomeScreenState();
+        }
+        
+        class _HomeScreenState extends State<HomeScreen> {
+          final AudioPlayer _player = AudioPlayer();
+          final TextEditingController _search = TextEditingController();
+          final List<Map<String, dynamic>> _folders = [];
+          final List<File> _songs = [];
+          List<File> _visibleSongs = [];
+          List<String> _favorites = [];
+          List<String> _recent = [];
+          List<Map<String, dynamic>> _playlists = [];
+          String _view = 'Songs';
+          String? _playlistDetail;
+          int _currentIndex = -1;
+          bool _playing = false;
+          Duration _duration = Duration.zero;
+          Duration _position = Duration.zero;
+          StreamSubscription? _stateSub, _durationSub, _positionSub, _completeSub;
+        
+          @override
+          void initState() {
+            super.initState();
+            _stateSub = _player.onPlayerStateChanged.listen((s) {
+              if (!mounted) return;
+              setState(() => _playing = s == PlayerState.playing);
+            });
+            _durationSub = _player.onDurationChanged.listen((d) {
+              if (mounted) setState(() => _duration = d);
+            });
+            _positionSub = _player.onPositionChanged.listen((p) {
+              if (mounted) setState(() => _position = p);
+            });
+            _completeSub = _player.onPlayerComplete.listen((_) => _next());
+            _load();
+          }
+        
+          Future<void> _load() async {
+            final p = await SharedPreferences.getInstance();
+            final folders = p.getStringList('folders') ?? [];
+            _favorites = p.getStringList('favorites') ?? [];
+            _recent = p.getStringList('recent') ?? [];
+            final playlistStrings = p.getStringList('playlists') ?? [];
+            _playlists = [];
+            for (final item in playlistStrings) {
+              final parts = item.split('|||');
+              if (parts.isEmpty) continue;
+              _playlists.add({
+                'name': parts.first,
+                'songs': parts.length > 1 ? parts[1].split('|').where((e) => e.isNotEmpty).toList() : <String>[],
+              });
+            }
+            _folders..clear()..addAll(folders.map((path) => ({
+              'name': path.split('/').last,
+              'path': path,
+              'enabled': true,
+            })));
+            await _scan();
+            if (mounted) setState(() {});
+          }
+        
+          Future<void> _save() async {
+            final p = await SharedPreferences.getInstance();
+            await p.setStringList('folders', _folders.map((e) => e['path'] as String).toList());
+            await p.setStringList('favorites', _favorites);
+            await p.setStringList('recent', _recent);
+            await p.setStringList('playlists', _playlists.map((e) => '${e['name']}|||${(e['songs'] as List<String>).join('|')}').toList());
+          }
+        
+          Future<void> _requestStorage() async {
+            if (!Platform.isAndroid) return;
+            try {
+              await Permission.audio.request();
+              await Permission.storage.request();
+              await Permission.manageExternalStorage.request();
+            } catch (_) {}
+            await _scan();
+          }
+        
+          Future<void> _scan() async {
+            final result = <File>[];
+            for (final folder in _folders.where((e) => e['enabled'] == true)) {
+              final dir = Directory(folder['path'] as String);
+              if (!await dir.exists()) continue;
+              try {
+                await for (final entity in dir.list(recursive: true, followLinks: false)) {
+                  if (entity is File && _isAudio(entity.path)) result.add(entity);
+                }
+              } catch (_) {}
+            }
+            result.sort((a, b) => fileName(a.path).toLowerCase().compareTo(fileName(b.path).toLowerCase()));
+            if (!mounted) return;
+            setState(() { _songs..clear()..addAll(result); });
+            _filter(_search.text);
+          }
+        
+          bool _isAudio(String path) {
+            final p = path.toLowerCase();
+            const exts = ['.mp3', '.m4a', '.aac', '.wav', '.ogg', '.flac', '.wma', '.opus'];
+            return exts.any(p.endsWith);
+          }
+        
+          String fileName(String path) {
+            final name = path.split('/').last;
+            return name.replaceFirst(RegExp(r'\.[^.]+$'), '').replaceAll(RegExp(r'\([^)]*\)'), '').replaceAll(RegExp(r'\[[^]]*\]'), '').replaceAll('_', ' ').replaceAll('-', ' ').trim();
+          }
+        
+          List<File> _baseList() {
+            switch (_view) {
+              case 'Favorites': return _songs.where((f) => _favorites.contains(f.path)).toList();
+              case 'Recent': return _recent.map(File.new).where((f) => f.existsSync()).toList();
+              case 'PlaylistDetail':
+                final p = _playlists.firstWhere((e) => e['name'] == _playlistDetail, orElse: () => {'name': '', 'songs': <String>[]});
+                final paths = p['songs'] as List<String>;
+                return _songs.where((f) => paths.contains(f.path)).toList();
+              default: return List<File>.from(_songs);
+            }
+          }
+        
+          void _filter(String query) {
+            final base = _baseList();
+            final q = query.trim().toLowerCase();
+            setState(() {
+              _visibleSongs = q.isEmpty ? base : base.where((f) => fileName(f.path).toLowerCase().contains(q)).toList();
+            });
+          }
+        
+          Future<void> _play(File file) async {
+            final index = _visibleSongs.indexWhere((f) => f.path == file.path);
+            if (index < 0) return;
+            setState(() => _currentIndex = index);
+            await _player.play(DeviceFileSource(file.path));
+            _recent.remove(file.path);
+            _recent.insert(0, file.path);
+            if (_recent.length > 50) _recent.removeLast();
+            await _save();
+          }
+        
+          Future<void> _next() async {
+            if (_visibleSongs.isEmpty) return;
+            final next = _currentIndex + 1;
+            if (next >= _visibleSongs.length) return;
+            await _play(_visibleSongs[next]);
+          }
+        
+          Future<void> _previous() async {
+            if (_visibleSongs.isEmpty) return;
+            final prev = _currentIndex - 1;
+            if (prev < 0) return;
+            await _play(_visibleSongs[prev]);
+          }
+        
+          void _setView(String view) {
+            setState(() {
+              _view = view;
+              if (view != 'PlaylistDetail') _playlistDetail = null;
+              _search.clear();
+            });
+            _filter('');
+          }
+        
+          Future<void> _toggleFavorite(String path) async {
+            setState(() {
+              if (_favorites.contains(path)) _favorites.remove(path);
+              else _favorites.add(path);
+            });
+            await _save();
+            _filter(_search.text);
+          }
+        
+          Future<void> _addFolder() async {
+            await _requestStorage();
+            try {
+              String? path = await FilePicker.platform.getDirectoryPath();
+              if (path == null) return;
+              if (_folders.any((f) => f['path'] == path)) return;
+              setState(() {
+                _folders.add({
+                  'name': path.split('/').last,
+                  'path': path,
+                  'enabled': true,
+                });
+              });
+              await _save();
+              await _scan();
+            } catch (_) {}
+          }
+        
+          Future<void> _createPlaylist() async {
+            final controller = TextEditingController();
+            final name = await showDialog<String>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Create Playlist'),
+                content: TextField(controller: controller, decoration: const InputDecoration(hintText: 'Playlist name')),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+                  FilledButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('Create')),
+                ],
+              ),
+            );
+            controller.dispose();
+            if (name == null || name.isEmpty) return;
+            setState(() { _playlists.add({'name': name, 'songs': <String>[]}); });
+            await _save();
+            _setView('Playlists');
+          }
+        
+          Future<void> _addToPlaylist(File song) async {
+            if (_playlists.isEmpty) { await _createPlaylist(); if (_playlists.isEmpty) return; }
+            final selected = await showDialog<int>(
+              context: context,
+              builder: (context) => SimpleDialog(
+                title: const Text('Add to Playlist'),
+                children: List.generate(_playlists.length, (i) => SimpleDialogOption(
+                  onPressed: () => Navigator.pop(context, i),
+                  child: Text(_playlists[i]['name'] as String),
+                )),
+              ),
+            );
+            if (selected == null) return;
+            final songs = _playlists[selected]['songs'] as List<String>;
+            if (!songs.contains(song.path)) songs.add(song.path);
+            await _save();
+          }
+        
+          String _time(Duration d) {
+            final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+            final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+            return '$m:$s';
+          }
+        
+          Widget _songList() {
+            if (_visibleSongs.isEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.library_music, size: 64, color: Colors.black12),
+                    const SizedBox(height: 12),
+                    const Text('No songs found', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 18),
+                    if (_view == 'Songs')
+                      FilledButton.icon(
+                        onPressed: _addFolder,
+                        icon: const Icon(Icons.folder_open),
+                        label: const Text('Add Music Folder'),
+                      ),
+                  ],
+                ),
+              );
+            }
+            return ListView.builder(
+              itemCount: _visibleSongs.length,
+              itemBuilder: (context, index) {
+                final song = _visibleSongs[index];
+                final current = index == _currentIndex && _playing;
+                return ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: current ? Colors.deepPurple : Colors.grey.shade200,
+                    child: Icon(Icons.music_note, color: current ? Colors.white : Colors.grey),
+                  ),
+                  title: Text(fileName(song.path), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  trailing: IconButton(
+                    onPressed: () => _toggleFavorite(song.path),
+                    icon: Icon(_favorites.contains(song.path) ? Icons.favorite : Icons.favorite_border),
+                  ),
+                  onTap: () => _play(song),
+                );
+              },
+            );
+          }
+        
+          @override
+          Widget build(BuildContext context) {
+            return Scaffold(
+              appBar: AppBar(title: const Text('Music Player')),
+              body: Column(
+                children: [
+                  Expanded(child: _songList()),
+                ],
+              ),
+              floatingActionButton: FloatingActionButton(
+                onPressed: _addFolder,
+                child: const Icon(Icons.create_new_folder),
+              ),
+            );
+          }
+        
+          @override
+          void dispose() {
+            _player.dispose();
+            super.dispose();
+          }
+        }
+        HOME_EOF
+    
     - name: Build APK
-      run: flutter build apk --debug
+      run: |
+        flutter pub get
+        flutter build apk --debug
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
