@@ -26,15 +26,11 @@ jobs:
 
       - name: Fix Android SDK to 34
         run: |
+          # Sirf .gradle file ke liye (Groovy)
           if [ -f "android/app/build.gradle" ]; then
             sed -i 's/compileSdkVersion 36/compileSdkVersion 34/g' android/app/build.gradle
             sed -i 's/targetSdkVersion 36/targetSdkVersion 34/g' android/app/build.gradle
             sed -i 's/minSdkVersion 24/minSdkVersion 21/g' android/app/build.gradle
-          fi
-          if [ -f "android/app/build.gradle.kts" ]; then
-            sed -i 's/compileSdk = 36/compileSdk = 34/g' android/app/build.gradle.kts
-            sed -i 's/targetSdk = 36/targetSdk = 34/g' android/app.build.gradle.kts
-            sed -i 's/minSdk = 24/minSdk = 21/g' android/app.build.gradle.kts
           fi
 
       - name: Build APK
