@@ -10,6 +10,7 @@ import 'lyrics_screen.dart';
 import 'audio_effects_screen.dart';
 import '../widgets/audio_visualizer.dart';
 import '../services/visualizer_service.dart';
+import 'fm_radio_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -617,6 +618,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => const EqualizerScreen()),
+                      );
+                    },
+                  ),
+                  
+                  // 📻 FM RADIO - NEW!
+                  ListTile(
+                    leading: const Icon(Icons.radio, color: Colors.blue),
+                    title: const Text('FM Radio', style: TextStyle(fontWeight: FontWeight.w600)),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const FMRadioScreen()),
                       );
                     },
                   ),
