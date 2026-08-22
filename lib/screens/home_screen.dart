@@ -13,69 +13,6 @@ import '../services/visualizer_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
-  void _showVisualizer() {
-    if (_currentIndex < 0 || _visibleSongs.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Play a song first!")),
-      );
-      return;
-    }
-    VisualizerService.start(_player);
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (context) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: Container(
-          height: 250,
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.black87,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Column(
-            children: [
-              const Text(
-                "Audio Visualizer",
-                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                "Visualizing:",
-                style: TextStyle(color: Colors.white54, fontSize: 12),
-              ),
-              Text(
-                fileName(_visibleSongs[_currentIndex].path),
-                style: const TextStyle(color: Colors.white70, fontSize: 14),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 20),
-              AudioVisualizer(
-                barCount: 20,
-                color: Colors.deepPurpleAccent,
-                height: 100,
-                animate: true,
-              ),
-              const SizedBox(height: 20),
-              TextButton(
-                onPressed: () {
-                  VisualizerService.stop();
-                  Navigator.pop(context);
-                },
-                child: const Text(
-                  "Close",
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ).then((_) {
-      VisualizerService.stop();
-    });
-  }
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -101,69 +38,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
 
-  void _showVisualizer() {
-    if (_currentIndex < 0 || _visibleSongs.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Play a song first!")),
-      );
-      return;
-    }
-    VisualizerService.start(_player);
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (context) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: Container(
-          height: 250,
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.black87,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Column(
-            children: [
-              const Text(
-                "Audio Visualizer",
-                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                "Visualizing:",
-                style: TextStyle(color: Colors.white54, fontSize: 12),
-              ),
-              Text(
-                fileName(_visibleSongs[_currentIndex].path),
-                style: const TextStyle(color: Colors.white70, fontSize: 14),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 20),
-              AudioVisualizer(
-                barCount: 20,
-                color: Colors.deepPurpleAccent,
-                height: 100,
-                animate: true,
-              ),
-              const SizedBox(height: 20),
-              TextButton(
-                onPressed: () {
-                  VisualizerService.stop();
-                  Navigator.pop(context);
-                },
-                child: const Text(
-                  "Close",
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ).then((_) {
-      VisualizerService.stop();
-    });
-  }
   @override
   void initState() {
     super.initState();
@@ -181,69 +55,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _checkPermission();
   }
 
-  void _showVisualizer() {
-    if (_currentIndex < 0 || _visibleSongs.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Play a song first!")),
-      );
-      return;
-    }
-    VisualizerService.start(_player);
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (context) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: Container(
-          height: 250,
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.black87,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Column(
-            children: [
-              const Text(
-                "Audio Visualizer",
-                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                "Visualizing:",
-                style: TextStyle(color: Colors.white54, fontSize: 12),
-              ),
-              Text(
-                fileName(_visibleSongs[_currentIndex].path),
-                style: const TextStyle(color: Colors.white70, fontSize: 14),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 20),
-              AudioVisualizer(
-                barCount: 20,
-                color: Colors.deepPurpleAccent,
-                height: 100,
-                animate: true,
-              ),
-              const SizedBox(height: 20),
-              TextButton(
-                onPressed: () {
-                  VisualizerService.stop();
-                  Navigator.pop(context);
-                },
-                child: const Text(
-                  "Close",
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ).then((_) {
-      VisualizerService.stop();
-    });
-  }
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
@@ -628,11 +439,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-
   void _showVisualizer() {
-    if (_currentIndex < 0 || _visibleSongs.isEmpty) {
+    if (_currentIndex < 0 || _filteredPlaylist.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Play a song first!")),
+        const SnackBar(content: Text('Play a song first!')),
       );
       return;
     }
@@ -652,16 +462,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           child: Column(
             children: [
               const Text(
-                "Audio Visualizer",
+                'Audio Visualizer',
                 style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 10),
               const Text(
-                "Visualizing:",
+                'Visualizing:',
                 style: TextStyle(color: Colors.white54, fontSize: 12),
               ),
               Text(
-                fileName(_visibleSongs[_currentIndex].path),
+                getFileName(_filteredPlaylist[_currentIndex].path),
                 style: const TextStyle(color: Colors.white70, fontSize: 14),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -680,7 +490,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   Navigator.pop(context);
                 },
                 child: const Text(
-                  "Close",
+                  'Close',
                   style: TextStyle(color: Colors.white),
                 ),
               ),
@@ -692,6 +502,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       VisualizerService.stop();
     });
   }
+
   @override
   void dispose() { 
     _player.dispose();
@@ -701,69 +512,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.dispose(); 
   }
 
-  void _showVisualizer() {
-    if (_currentIndex < 0 || _visibleSongs.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Play a song first!")),
-      );
-      return;
-    }
-    VisualizerService.start(_player);
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (context) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: Container(
-          height: 250,
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.black87,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Column(
-            children: [
-              const Text(
-                "Audio Visualizer",
-                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                "Visualizing:",
-                style: TextStyle(color: Colors.white54, fontSize: 12),
-              ),
-              Text(
-                fileName(_visibleSongs[_currentIndex].path),
-                style: const TextStyle(color: Colors.white70, fontSize: 14),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 20),
-              AudioVisualizer(
-                barCount: 20,
-                color: Colors.deepPurpleAccent,
-                height: 100,
-                animate: true,
-              ),
-              const SizedBox(height: 20),
-              TextButton(
-                onPressed: () {
-                  VisualizerService.stop();
-                  Navigator.pop(context);
-                },
-                child: const Text(
-                  "Close",
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ).then((_) {
-      VisualizerService.stop();
-    });
-  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1056,138 +804,12 @@ class FolderManagerScreen extends StatefulWidget {
   final List<Map<String, dynamic>> folders;
   final VoidCallback onFoldersUpdated;
   const FolderManagerScreen({Key? key, required this.folders, required this.onFoldersUpdated}) : super(key: key);
-  void _showVisualizer() {
-    if (_currentIndex < 0 || _visibleSongs.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Play a song first!")),
-      );
-      return;
-    }
-    VisualizerService.start(_player);
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (context) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: Container(
-          height: 250,
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.black87,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Column(
-            children: [
-              const Text(
-                "Audio Visualizer",
-                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                "Visualizing:",
-                style: TextStyle(color: Colors.white54, fontSize: 12),
-              ),
-              Text(
-                fileName(_visibleSongs[_currentIndex].path),
-                style: const TextStyle(color: Colors.white70, fontSize: 14),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 20),
-              AudioVisualizer(
-                barCount: 20,
-                color: Colors.deepPurpleAccent,
-                height: 100,
-                animate: true,
-              ),
-              const SizedBox(height: 20),
-              TextButton(
-                onPressed: () {
-                  VisualizerService.stop();
-                  Navigator.pop(context);
-                },
-                child: const Text(
-                  "Close",
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ).then((_) {
-      VisualizerService.stop();
-    });
-  }
   @override
   State<FolderManagerScreen> createState() => _FolderManagerScreenState();
 }
 
 class _FolderManagerScreenState extends State<FolderManagerScreen> {
   bool _hasPermission = false;
-  void _showVisualizer() {
-    if (_currentIndex < 0 || _visibleSongs.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Play a song first!")),
-      );
-      return;
-    }
-    VisualizerService.start(_player);
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (context) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: Container(
-          height: 250,
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.black87,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Column(
-            children: [
-              const Text(
-                "Audio Visualizer",
-                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                "Visualizing:",
-                style: TextStyle(color: Colors.white54, fontSize: 12),
-              ),
-              Text(
-                fileName(_visibleSongs[_currentIndex].path),
-                style: const TextStyle(color: Colors.white70, fontSize: 14),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 20),
-              AudioVisualizer(
-                barCount: 20,
-                color: Colors.deepPurpleAccent,
-                height: 100,
-                animate: true,
-              ),
-              const SizedBox(height: 20),
-              TextButton(
-                onPressed: () {
-                  VisualizerService.stop();
-                  Navigator.pop(context);
-                },
-                child: const Text(
-                  "Close",
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ).then((_) {
-      VisualizerService.stop();
-    });
-  }
   @override
   void initState() { super.initState(); _checkPermission(); }
   
@@ -1225,69 +847,6 @@ class _FolderManagerScreenState extends State<FolderManagerScreen> {
     }
   }
   
-  void _showVisualizer() {
-    if (_currentIndex < 0 || _visibleSongs.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Play a song first!")),
-      );
-      return;
-    }
-    VisualizerService.start(_player);
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (context) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: Container(
-          height: 250,
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.black87,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Column(
-            children: [
-              const Text(
-                "Audio Visualizer",
-                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                "Visualizing:",
-                style: TextStyle(color: Colors.white54, fontSize: 12),
-              ),
-              Text(
-                fileName(_visibleSongs[_currentIndex].path),
-                style: const TextStyle(color: Colors.white70, fontSize: 14),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 20),
-              AudioVisualizer(
-                barCount: 20,
-                color: Colors.deepPurpleAccent,
-                height: 100,
-                animate: true,
-              ),
-              const SizedBox(height: 20),
-              TextButton(
-                onPressed: () {
-                  VisualizerService.stop();
-                  Navigator.pop(context);
-                },
-                child: const Text(
-                  "Close",
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ).then((_) {
-      VisualizerService.stop();
-    });
-  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
