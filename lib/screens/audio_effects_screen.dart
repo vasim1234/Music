@@ -18,6 +18,7 @@ class _AudioEffectsScreenState extends State<AudioEffectsScreen> {
   @override
   void initState() {
     super.initState();
+    AudioEffectsService.initialize();
     _loadValues();
   }
 
@@ -55,195 +56,53 @@ class _AudioEffectsScreenState extends State<AudioEffectsScreen> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // Status Card
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: _isEnabled ? Colors.green.shade50 : Colors.grey.shade200,
-                borderRadius: BorderRadius.circular(15),
-                border: Border.all(
-                  color: _isEnabled ? Colors.green : Colors.grey,
-                  width: 1,
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    _isEnabled ? Icons.check_circle : Icons.power_off,
-                    color: _isEnabled ? Colors.green : Colors.grey,
-                    size: 28,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      _isEnabled ? 'Audio Effects Active' : 'Audio Effects Disabled',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: _isEnabled ? Colors.green : Colors.grey,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            _buildStatusCard(),
             const SizedBox(height: 20),
-
-            // Bass Boost
-            _buildSlider(
-              icon: Icons.equalizer,
-              title: 'Bass Boost',
-              value: _bassBoost,
-              displayValue: '${(_bassBoost * 100).round()}%',
-              onChanged: (v) {
-                setState(() {
-                  _bassBoost = v;
-                  AudioEffectsService.setBassBoost(v);
-                });
-              },
-            ),
-
-            // Pitch Control
-            _buildSlider(
-              icon: Icons.tune,
-              title: 'Pitch',
-              value: (_pitch + 12) / 24,
-              displayValue: '${_pitch.round()} semitones',
-              onChanged: (v) {
-                double pitch = (v * 24) - 12;
-                setState(() {
-                  _pitch = pitch;
-                  AudioEffectsService.setPitch(pitch);
-                });
-              },
-            ),
-
-            // Speed Control
-            _buildSlider(
-              icon: Icons.speed,
-              title: 'Speed',
-              value: (_speed - 0.5) / 1.5,
-              displayValue: '${_speed.toStringAsFixed(1)}x',
-              onChanged: (v) {
-                double speed = (v * 1.5) + 0.5;
-                setState(() {
-                  _speed = speed;
-                  AudioEffectsService.setSpeed(speed);
-                });
-              },
-            ),
-
-            // Reverb
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: isDark ? Colors.grey.shade900 : Colors.grey.shade50,
-                borderRadius: BorderRadius.circular(15),
-                border: Border.all(
-                  color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
-                  width: 1,
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.surround_sound, color: _isEnabled ? Colors.deepPurple : Colors.grey),
-                      const SizedBox(width: 12),
-                      Text(
-                        'Reverb',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: _isEnabled ? Colors.black87 : Colors.grey,
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        AudioEffectsService.getReverbName(_reverb),
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: _isEnabled ? Colors.deepPurple : Colors.grey,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: ReverbType.values.map((type) {
-                      bool isSelected = _reverb == type;
-                      return FilterChip(
-                        label: Text(AudioEffectsService.getReverbName(type)),
-                        selected: isSelected,
-                        onSelected: _isEnabled ? (selected) {
-                          setState(() {
-                            _reverb = type;
-                            AudioEffectsService.setReverb(type);
-                          });
-                        } : null,
-                        backgroundColor: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
-                        selectedColor: Colors.deepPurple,
-                        labelStyle: TextStyle(
-                          color: isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
-                        ),
-                        checkmarkColor: Colors.white,
-                      );
-                    }).toList(),
-                  ),
-                ],
-              ),
-            ),
-
+            _buildSlider('Bass Boost', Icons.bass_boost, _bassBoost, 0, 1, 
+                (v) { setState(() { _bassBoost = v; AudioEffectsService.setBassBoost(v); }); },
+                '${(_bassBoost * 100).round()}%'),
+            _buildSlider('Pitch', Icons.tune, (_pitch + 12) / 24, -12, 12,
+                (v) { double pitch = (v * 24) - 12; setState(() { _pitch = pitch; AudioEffectsService.setPitch(pitch); }); },
+                '${_pitch.round()} semitones'),
+            _buildSlider('Speed', Icons.speed, (_speed - 0.5) / 1.5, 0.5, 2.0,
+                (v) { double speed = (v * 1.5) + 0.5; setState(() { _speed = speed; AudioEffectsService.setSpeed(speed); }); },
+                '${_speed.toStringAsFixed(1)}x'),
+            _buildReverbSelector(),
             const SizedBox(height: 20),
-
-            // Reset Button
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red.shade50,
-                  foregroundColor: Colors.red,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
-                    side: BorderSide(color: Colors.red.shade200),
-                  ),
-                ),
-                onPressed: () async {
-                  await AudioEffectsService.resetAll();
-                  setState(() {
-                    _loadValues();
-                  });
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('All effects reset to default'),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
-                  }
-                },
-                icon: const Icon(Icons.restore),
-                label: const Text('Reset All Effects', style: TextStyle(fontSize: 16)),
-              ),
-            ),
+            _buildResetButton(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildSlider({
-    required IconData icon,
-    required String title,
-    required double value,
-    required String displayValue,
-    required ValueChanged<double> onChanged,
-  }) {
+  Widget _buildStatusCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _isEnabled ? Colors.green.shade50 : Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: _isEnabled ? Colors.green : Colors.grey),
+      ),
+      child: Row(
+        children: [
+          Icon(_isEnabled ? Icons.check_circle : Icons.power_off, 
+               color: _isEnabled ? Colors.green : Colors.grey, size: 28),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              _isEnabled ? 'Audio Effects Active' : 'Audio Effects Disabled',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold,
+                     color: _isEnabled ? Colors.green : Colors.grey),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSlider(String title, IconData icon, double value, double min, double max,
+      ValueChanged<double> onChanged, String displayValue) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
     return Container(
@@ -252,10 +111,7 @@ class _AudioEffectsScreenState extends State<AudioEffectsScreen> {
       decoration: BoxDecoration(
         color: isDark ? Colors.grey.shade900 : Colors.grey.shade50,
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(
-          color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
-          width: 1,
-        ),
+        border: Border.all(color: isDark ? Colors.grey.shade700 : Colors.grey.shade300),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -264,26 +120,13 @@ class _AudioEffectsScreenState extends State<AudioEffectsScreen> {
             children: [
               Icon(icon, color: _isEnabled ? Colors.deepPurple : Colors.grey),
               const SizedBox(width: 12),
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: _isEnabled ? Colors.black87 : Colors.grey,
-                ),
-              ),
+              Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold,
+                     color: _isEnabled ? Colors.black87 : Colors.grey)),
               const Spacer(),
-              Text(
-                displayValue,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: _isEnabled ? Colors.deepPurple : Colors.grey,
-                ),
-              ),
+              Text(displayValue, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold,
+                     color: _isEnabled ? Colors.deepPurple : Colors.grey)),
             ],
           ),
-          const SizedBox(height: 8),
           SliderTheme(
             data: SliderThemeData(
               trackHeight: 4,
@@ -303,6 +146,86 @@ class _AudioEffectsScreenState extends State<AudioEffectsScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildReverbSelector() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.grey.shade900 : Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: isDark ? Colors.grey.shade700 : Colors.grey.shade300),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.surround_sound, color: _isEnabled ? Colors.deepPurple : Colors.grey),
+              const SizedBox(width: 12),
+              Text('Reverb', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold,
+                     color: _isEnabled ? Colors.black87 : Colors.grey)),
+              const Spacer(),
+              Text(AudioEffectsService.getReverbName(_reverb),
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold,
+                           color: _isEnabled ? Colors.deepPurple : Colors.grey)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: ReverbType.values.map((type) {
+              bool isSelected = _reverb == type;
+              return FilterChip(
+                label: Text(AudioEffectsService.getReverbName(type)),
+                selected: isSelected,
+                onSelected: _isEnabled ? (selected) {
+                  setState(() {
+                    _reverb = type;
+                    AudioEffectsService.setReverb(type);
+                  });
+                } : null,
+                backgroundColor: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
+                selectedColor: Colors.deepPurple,
+                labelStyle: TextStyle(
+                  color: isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                ),
+                checkmarkColor: Colors.white,
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResetButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.red.shade50,
+          foregroundColor: Colors.red,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+            side: BorderSide(color: Colors.red.shade200),
+          ),
+        ),
+        onPressed: () async {
+          await AudioEffectsService.resetAll();
+          setState(() { _loadValues(); });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('All effects reset to default'), backgroundColor: Colors.green),
+          );
+        },
+        icon: const Icon(Icons.restore),
+        label: const Text('Reset All Effects', style: TextStyle(fontSize: 16)),
       ),
     );
   }
