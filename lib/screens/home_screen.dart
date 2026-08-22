@@ -656,6 +656,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
               ),
               const Divider(),
+              // 🎵 LYRICS - NEW!
               ListTile(
                 leading: const Icon(Icons.lyrics, color: Colors.pink),
                 title: const Text('Lyrics', style: TextStyle(fontWeight: FontWeight.w600)),
@@ -679,6 +680,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   }
                 },
               ),
+              // 📊 VISUALIZER - NEW!
               ListTile(
                 leading: const Icon(Icons.equalizer, color: Colors.orange),
                 title: const Text('Visualizer', style: TextStyle(fontWeight: FontWeight.w600)),
@@ -687,6 +689,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   _showVisualizer();
                 },
               ),
+              // 🎚️ AUDIO EFFECTS - NEW!
               ListTile(
                 leading: const Icon(Icons.audiotrack, color: Colors.teal),
                 title: const Text('Audio Effects', style: TextStyle(fontWeight: FontWeight.w600)),
