@@ -5,6 +5,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/notification_service.dart';
+import '../services/album_art_service.dart'; // ✅ Album Art Service Imported!
 import 'equalizer_screen.dart';
 import 'lyrics_screen.dart';
 import 'audio_effects_screen.dart';
@@ -47,13 +48,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _player.onDurationChanged.listen((d) => setState(() => _duration = d));
     _player.onPositionChanged.listen((p) => setState(() => _position = p));
     _player.onPlayerStateChanged.listen((state) {
-      setState(() => isPlaying = state == PlayerState.playing);
+      if (mounted) setState(() => isPlaying = state == PlayerState.playing);
       _updateLockScreenControls();
     });
     _player.onPlayerComplete.listen((event) => playNext());
     
     _loadData();
     _checkPermission();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _player.dispose();
+    super.dispose();
   }
 
   @override
@@ -330,9 +338,367 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _saveData();
   }
 
+  // ✅ Yahan Aapka Naya Album Art Add Hua Hai Full Screen Player Mein!
   void openFullScreenPlayer() {
     if (_currentIndex == -1 || _filteredPlaylist.isEmpty) return;
+    
     showModalBottomSheet(
-      context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
+      context: context, 
+      isScrollControlled: true, 
+      backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) {
+          
+          // Sheet ko update rakhne ke liye listeners
+          _player.onPositionChanged.listen((p) { if(mounted) setModalState((){}); });
+          _player.onPlayerStateChanged.listen((s) { if(mounted) setModalState((){}); });
+
+          final currentSongPath = _filteredPlaylist[_currentIndex].path;
+          final songName = getFileName(currentSongPath);
+
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.85,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
+            child: Column(
+              children: [
+                // 🎵 Nayi Gol (Circular) Album Art
+                Container(
+                  width: 260,
+                  height: 260,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.purple.withOpacity(0.3),
+                        blurRadius: 30,
+                        spreadRadius: 10,
+                      ),
+                    ],
+                  ),
+                  child: ClipOval(
+                    child: AlbumArtService.buildAlbumArt(
+                      filePath: currentSongPath,
+                      songName: songName,
+                      size: 260,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 40),
+                
+                // Song Title & Subtitle
+                Text(
+                  songName,
+                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 8),
+                const Text("Local Audio", style: TextStyle(color: Colors.grey, fontSize: 16)),
+                const Spacer(),
+
+                // Seek Bar Slider
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+                  ),
+                  child: Slider(
+                    activeColor: Colors.deepPurple,
+                    inactiveColor: Colors.deepPurple.shade100,
+                    min: 0,
+                    max: _duration.inSeconds.toDouble() > 0 ? _duration.inSeconds.toDouble() : 1,
+                    value: _position.inSeconds.toDouble().clamp(0, _duration.inSeconds.toDouble() > 0 ? _duration.inSeconds.toDouble() : 1),
+                    onChanged: (val) async {
+                      await _player.seek(Duration(seconds: val.toInt()));
+                    },
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(formatTime(_position), style: const TextStyle(fontWeight: FontWeight.w500)),
+                      Text(formatTime(_duration), style: const TextStyle(fontWeight: FontWeight.w500)),
+                    ],
+                  ),
+                ),
+                const Spacer(),
+
+                // Playback Controls
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    IconButton(
+                      iconSize: 40,
+                      icon: const Icon(Icons.skip_previous, color: Colors.deepPurple),
+                      onPressed: () { playPrevious(); setModalState((){}); },
+                    ),
+                    Container(
+                      height: 70,
+                      width: 70,
+                      decoration: BoxDecoration(
+                        color: Colors.deepPurple,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(color: Colors.deepPurple.withOpacity(0.4), blurRadius: 15, spreadRadius: 2)
+                        ]
+                      ),
+                      child: IconButton(
+                        iconSize: 40,
+                        color: Colors.white,
+                        icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow),
+                        onPressed: () async {
+                          if (isPlaying) await _player.pause(); else await _player.resume();
+                          setModalState((){});
+                        },
+                      ),
+                    ),
+                    IconButton(
+                      iconSize: 40,
+                      icon: const Icon(Icons.skip_next, color: Colors.deepPurple),
+                      onPressed: () { playNext(); setModalState((){}); },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // Scaffold aur Main Screen Build Method
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.grey.shade50,
+      appBar: AppBar(
+        title: Text(_currentView, style: const TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.deepPurple,
+        foregroundColor: Colors.white,
+        elevation: 0,
+      ),
+      drawer: Drawer(
+        child: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.only(top: 50, bottom: 20),
+              color: Colors.deepPurple,
+              child: const Column(
+                children: [
+                  Icon(Icons.library_music, size: 70, color: Colors.white),
+                  SizedBox(height: 10),
+                  Text("Bhai Bhai Music", style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
+            ListTile(leading: const Icon(Icons.music_note), title: const Text('All Songs'), onTap: () { setView('Songs'); Navigator.pop(context); }),
+            ListTile(leading: const Icon(Icons.favorite), title: const Text('Favorites'), onTap: () { setView('Favorites'); Navigator.pop(context); }),
+            ListTile(leading: const Icon(Icons.history), title: const Text('Recent'), onTap: () { setView('Recent'); Navigator.pop(context); }),
+            ListTile(leading: const Icon(Icons.folder_open), title: const Text('Manage Folders'), onTap: () { Navigator.pop(context); openFolderManager(); }),
+          ],
+        ),
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: TextField(
+              controller: _searchController,
+              onChanged: filterSearchResults,
+              decoration: InputDecoration(
+                hintText: 'Search your favorite songs...',
+                prefixIcon: const Icon(Icons.search, color: Colors.deepPurple),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(30),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(vertical: 0),
+              ),
+            ),
+          ),
+          Expanded(
+            child: _filteredPlaylist.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.music_off, size: 60, color: Colors.grey.shade400),
+                        const SizedBox(height: 10),
+                        Text('No songs found in $_currentView', style: TextStyle(color: Colors.grey.shade600, fontSize: 16)),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.only(bottom: 80), // Space for mini player
+                    itemCount: _filteredPlaylist.length,
+                    itemBuilder: (context, index) {
+                      final song = _filteredPlaylist[index];
+                      final songName = getFileName(song.path);
+                      final isCurrentSong = index == _currentIndex;
+
+                      return Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: isCurrentSong ? Colors.deepPurple.shade50 : Colors.white,
+                          borderRadius: BorderRadius.circular(15),
+                          boxShadow: [
+                            BoxShadow(color: Colors.grey.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2))
+                          ]
+                        ),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                          // List item me Album Art lag gaya
+                          leading: AlbumArtService.buildAlbumArt(
+                            filePath: song.path,
+                            songName: songName,
+                            size: 50,
+                          ),
+                          title: Text(
+                            songName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontWeight: isCurrentSong ? FontWeight.bold : FontWeight.w500,
+                              color: isCurrentSong ? Colors.deepPurple : Colors.black87,
+                            ),
+                          ),
+                          subtitle: const Text("Local Audio", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                          trailing: IconButton(
+                            icon: Icon(
+                              _favorites.contains(song.path) ? Icons.favorite : Icons.favorite_border,
+                              color: _favorites.contains(song.path) ? Colors.deepPurpleAccent : Colors.grey,
+                            ),
+                            onPressed: () => toggleFavorite(song.path),
+                          ),
+                          onTap: () {
+                            setState(() => _currentIndex = index);
+                            playSong(song.path);
+                          },
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+      // Mini Player jo list ke neeche rahega
+      bottomSheet: _currentIndex >= 0 && _filteredPlaylist.isNotEmpty
+          ? GestureDetector(
+              onTap: openFullScreenPlayer,
+              child: Container(
+                height: 75,
+                decoration: BoxDecoration(
+                  color: Colors.deepPurple.shade900,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 15),
+                child: Row(
+                  children: [
+                    // Mini Player me bhi Album Art
+                    AlbumArtService.buildAlbumArt(
+                      filePath: _filteredPlaylist[_currentIndex].path,
+                      songName: getFileName(_filteredPlaylist[_currentIndex].path),
+                      size: 45,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            getFileName(_filteredPlaylist[_currentIndex].path),
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const Text("Tap to open player", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill, color: Colors.white, size: 40),
+                      onPressed: () async {
+                        if (isPlaying) await _player.pause(); else await _player.resume();
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : null,
+    );
+  }
+}
+
+// 📂 Folder Manager Screen
+class FolderManagerScreen extends StatefulWidget {
+  final List<Map<String, dynamic>> folders;
+  final VoidCallback onFoldersUpdated;
+
+  const FolderManagerScreen({Key? key, required this.folders, required this.onFoldersUpdated}) : super(key: key);
+
+  @override
+  State<FolderManagerScreen> createState() => _FolderManagerScreenState();
+}
+
+class _FolderManagerScreenState extends State<FolderManagerScreen> {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Manage Music Folders'), backgroundColor: Colors.deepPurple, foregroundColor: Colors.white),
+      body: widget.folders.isEmpty
+          ? const Center(child: Text("No folders added. Tap + to add."))
+          : ListView.builder(
+              itemCount: widget.folders.length,
+              itemBuilder: (context, index) {
+                final folder = widget.folders[index];
+                return CheckboxListTile(
+                  activeColor: Colors.deepPurple,
+                  title: Text(folder['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text(folder['path']),
+                  value: folder['isChecked'],
+                  onChanged: (val) {
+                    setState(() => folder['isChecked'] = val);
+                    widget.onFoldersUpdated();
+                  },
+                );
+              },
+            ),
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: Colors.deepPurple,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.create_new_folder),
+        label: const Text("Add Folder"),
+        onPressed: () async {
+          String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+          if (selectedDirectory != null) {
+            bool exists = widget.folders.any((f) => f['path'] == selectedDirectory);
+            if (!exists) {
+              setState(() {
+                widget.folders.add({
+                  'name': selectedDirectory.split('/').last,
+                  'path': selectedDirectory,
+                  'isChecked': true,
+                });
+              });
+              widget.onFoldersUpdated();
+            }
+          }
+        },
+      ),
+    );
+  }
+}
