@@ -91,7 +91,7 @@ class _AudioEffectsScreenState extends State<AudioEffectsScreen> {
 
             // Bass Boost
             _buildSlider(
-              icon: Icons.bass_boost,
+              icon: Icons.equalizer,
               title: 'Bass Boost',
               value: _bassBoost,
               displayValue: '${(_bassBoost * 100).round()}%',
