@@ -770,7 +770,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     },
                   ),
                   
-                  // ⏰ SLEEP TIMER - NEW!
                   ListTile(
                     leading: const Icon(Icons.timer, color: Colors.orange),
                     title: const Text('Sleep Timer', style: TextStyle(fontWeight: FontWeight.w600)),
@@ -780,7 +779,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     },
                   ),
                   
-                  // 🌙 THEME TOGGLE - NEW!
                   ListTile(
                     leading: Icon(_isDarkMode ? Icons.dark_mode : Icons.light_mode, color: Colors.purple),
                     title: Text(_isDarkMode ? 'Dark Mode' : 'Light Mode', style: const TextStyle(fontWeight: FontWeight.w600)),
@@ -832,7 +830,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       
       body: Column(
         children: [
-          // Sleep Timer Indicator
           if (_showSleepTimer && SleepTimerService.isRunning)
             Container(
               width: double.infinity,
