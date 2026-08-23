@@ -17,8 +17,7 @@ dependencies:
   flutter_local_notifications: ^17.1.2
   http: ^1.2.0
   just_audio: ^0.9.37
-  # ID3 Tag reader for album art
-  flutter_audio_query: ^0.2.0
+  # flutter_audio_query REMOVED - null safety issue
 
 dev_dependencies:
   flutter_test:

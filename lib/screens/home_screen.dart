@@ -583,7 +583,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ListTile(leading: const Icon(Icons.refresh, color: Colors.blueAccent), title: const Text('Scan Music', style: TextStyle(fontWeight: FontWeight.w600)), onTap: () { Navigator.pop(context); updatePlaylistFromFolders(); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Scanning...'))); }),
                   const Divider(),
                   
-                  // 🎵 LYRICS
                   ListTile(
                     leading: const Icon(Icons.lyrics, color: Colors.pink),
                     title: const Text('Lyrics', style: TextStyle(fontWeight: FontWeight.w600)),
@@ -608,7 +607,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     },
                   ),
                   
-                  // 📊 VISUALIZER
                   ListTile(
                     leading: const Icon(Icons.equalizer, color: Colors.orange),
                     title: const Text('Visualizer', style: TextStyle(fontWeight: FontWeight.w600)),
@@ -618,7 +616,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     },
                   ),
                   
-                  // 🎚️ AUDIO EFFECTS
                   ListTile(
                     leading: const Icon(Icons.audiotrack, color: Colors.teal),
                     title: const Text('Audio Effects', style: TextStyle(fontWeight: FontWeight.w600)),
@@ -631,7 +628,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     },
                   ),
                   
-                  // 🎛️ EQUALIZER
                   ListTile(
                     leading: const Icon(Icons.equalizer, color: Colors.deepOrange),
                     title: const Text('Equalizer'),
@@ -644,7 +640,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     },
                   ),
                   
-                  // 📻 FM RADIO
                   ListTile(
                     leading: const Icon(Icons.radio, color: Colors.blue),
                     title: const Text('FM Radio', style: TextStyle(fontWeight: FontWeight.w600)),
