@@ -30,6 +30,10 @@ jobs:
           flutter create . --platforms=android --project-name=music
           flutter clean
 
+      - name: Update Android Compile SDK
+        run: |
+          sed -i 's/compileSdk = .*/compileSdk = 37/' android/app/build.gradle.kts || sed -i 's/compileSdkVersion .*/compileSdkVersion 37/' android/app/build.gradle
+
       - name: Add Dependencies
         run: |
           flutter pub add audioplayers file_picker permission_handler shared_preferences flutter_local_notifications
