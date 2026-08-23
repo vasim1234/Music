@@ -30,9 +30,21 @@ jobs:
           flutter create . --platforms=android --project-name=music
           flutter clean
 
-      - name: Update Android Compile SDK
+      - name: Enable Desugaring and Update Android SDK
         run: |
           sed -i 's/compileSdk = .*/compileSdk = 37/' android/app/build.gradle.kts || sed -i 's/compileSdkVersion .*/compileSdkVersion 37/' android/app/build.gradle
+          
+          # Enable core library desugaring for flutter_local_notifications
+          cat << 'GRADLE_EOF' >> android/app/build.gradle.kts
+          android {
+              compileOptions {
+                  isCoreLibraryDesugaringEnabled = true
+              }
+          }
+          dependencies {
+              coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+          }
+          GRADLE_EOF
 
       - name: Add Dependencies
         run: |
