@@ -288,7 +288,7 @@ jobs:
             Future<void> _addFolder() async {
               await _requestStorage();
               try {
-                final path = await FilePicker.platform.getDirectoryPath();
+                final path = await FilePicker.getDirectoryPath();
                 if (path == null) return;
                 if (_folders.any((f) => f['path'] == path)) {
                   if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Folder already added.')));
