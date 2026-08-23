@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:audioplayers/audioplayers.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/notification_service.dart';
+import '../services/real_equalizer_service.dart';
 import 'equalizer_screen.dart';
 import 'lyrics_screen.dart';
 import 'audio_effects_screen.dart';
@@ -20,7 +21,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
-  final AudioPlayer _player = AudioPlayer();
+  late AudioPlayer _player;
   final TextEditingController _searchController = TextEditingController();
   
   List<Map<String, dynamic>> _savedFolders = [];
@@ -39,19 +40,36 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
+  bool _isPlayerInitialized = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     
-    _player.onDurationChanged.listen((d) => setState(() => _duration = d));
-    _player.onPositionChanged.listen((p) => setState(() => _position = p));
-    _player.onPlayerStateChanged.listen((state) {
-      setState(() => isPlaying = state == PlayerState.playing);
+    _initializePlayer();
+  }
+
+  Future<void> _initializePlayer() async {
+    _player = AudioPlayer();
+    _isPlayerInitialized = true;
+    
+    _player.durationStream.listen((d) {
+      if (d != null) setState(() => _duration = d);
+    });
+    _player.positionStream.listen((p) {
+      if (p != null) setState(() => _position = p);
+    });
+    _player.playerStateStream.listen((state) {
+      setState(() => isPlaying = state.playing);
       _updateLockScreenControls();
     });
-    _player.onPlayerComplete.listen((event) => playNext());
+    _player.playbackEventStream.listen((event) {
+      // Handle playback events
+    });
+    
+    // Initialize equalizer
+    await RealEqualizerService.initialize(_player);
     
     _loadData();
     _checkPermission();
@@ -65,7 +83,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _updateLockScreenControls() {
-    if (_currentIndex >= 0 && _filteredPlaylist.isNotEmpty) {
+    if (_currentIndex >= 0 && _filteredPlaylist.isNotEmpty && _isPlayerInitialized) {
       String songName = getFileName(_filteredPlaylist[_currentIndex].path);
       NotificationService.showNowPlayingNotification(
         title: songName,
@@ -261,12 +279,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void toggle3D() {
     setState(() {
       is3DOn = !is3DOn;
-      if (is3DOn) { _player.setVolume(0.8); _player.setBalance(0.5); } else { _player.setVolume(1.0); _player.setBalance(0.0); }
+      if (is3DOn && _isPlayerInitialized) { 
+        _player.setVolume(0.8); 
+      } else if (_isPlayerInitialized) { 
+        _player.setVolume(1.0); 
+      }
     });
   }
 
   Future<void> playSong(String path) async { 
-    await _player.play(DeviceFileSource(path)); 
+    if (!_isPlayerInitialized) return;
+    await _player.setFilePath(path); 
+    await _player.play(); 
     addToRecent(path);
     _updateLockScreenControls();
   }
@@ -332,7 +356,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void openFullScreenPlayer() {
-    if (_currentIndex == -1 || _filteredPlaylist.isEmpty) return;
+    if (_currentIndex == -1 || _filteredPlaylist.isEmpty || !_isPlayerInitialized) return;
     showModalBottomSheet(
       context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
@@ -389,7 +413,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
                 const Spacer(),
                 StreamBuilder<Duration>(
-                  stream: _player.onPositionChanged,
+                  stream: _player.positionStream,
                   builder: (context, snapshot) {
                     Duration pos = snapshot.data ?? _position;
                     return Column(
@@ -416,12 +440,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     IconButton(icon: Icon(_favorites.contains(_filteredPlaylist[_currentIndex].path) ? Icons.favorite : Icons.favorite_border, color: _favorites.contains(_filteredPlaylist[_currentIndex].path) ? Colors.deepPurpleAccent : Colors.white54, size: 28), onPressed: () { toggleFavorite(_filteredPlaylist[_currentIndex].path); setModalState((){}); setState((){}); }),
                     IconButton(iconSize: 45, color: Colors.white, icon: const Icon(Icons.skip_previous), onPressed: () { playPrevious(); setModalState((){}); }),
                     StreamBuilder<PlayerState>(
-                      stream: _player.onPlayerStateChanged,
+                      stream: _player.playerStateStream,
                       builder: (context, snapshot) {
-                        bool playing = snapshot.data == PlayerState.playing || isPlaying;
+                        bool playing = snapshot.data?.playing == true || isPlaying;
                         return Container(
                           height: 75, width: 75, decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.purpleAccent),
-                          child: IconButton(iconSize: 45, color: Colors.white, icon: Icon(playing ? Icons.pause : Icons.play_arrow), onPressed: () async { playing ? await _player.pause() : await _player.resume(); }),
+                          child: IconButton(iconSize: 45, color: Colors.white, icon: Icon(playing ? Icons.pause : Icons.play_arrow), onPressed: () async { playing ? await _player.pause() : await _player.play(); }),
                         );
                       }
                     ),
@@ -439,7 +463,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget buildMiniPlayer() {
-    if (_currentIndex < 0 || _filteredPlaylist.isEmpty) return const SizedBox.shrink();
+    if (_currentIndex < 0 || _filteredPlaylist.isEmpty || !_isPlayerInitialized) return const SizedBox.shrink();
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.pink.shade100, Colors.purple.shade100]), borderRadius: BorderRadius.circular(30), boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 5))]),
@@ -453,7 +477,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         title: Text(getFileName(_filteredPlaylist[_currentIndex].path), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
         subtitle: const Text("Local Audio", maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Colors.black54)),
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-          IconButton(icon: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled, color: Colors.black54, size: 35), onPressed: () { isPlaying ? _player.pause() : _player.resume(); }),
+          IconButton(icon: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled, color: Colors.black54, size: 35), onPressed: () { isPlaying ? _player.pause() : _player.play(); }),
           IconButton(icon: const Icon(Icons.skip_next, color: Colors.black54, size: 30), onPressed: playNext),
         ]),
         onTap: openFullScreenPlayer,
@@ -462,72 +486,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _showVisualizer() {
-    if (_currentIndex < 0 || _filteredPlaylist.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Play a song first!')),
-      );
-      return;
-    }
-    VisualizerService.start(_player);
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (context) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: Container(
-          height: 250,
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.black87,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Column(
-            children: [
-              const Text(
-                'Audio Visualizer',
-                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'Visualizing:',
-                style: TextStyle(color: Colors.white54, fontSize: 12),
-              ),
-              Text(
-                getFileName(_filteredPlaylist[_currentIndex].path),
-                style: const TextStyle(color: Colors.white70, fontSize: 14),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 20),
-              AudioVisualizer(
-                barCount: 20,
-                color: Colors.deepPurpleAccent,
-                height: 100,
-                animate: true,
-              ),
-              const SizedBox(height: 20),
-              TextButton(
-                onPressed: () {
-                  VisualizerService.stop();
-                  Navigator.pop(context);
-                },
-                child: const Text(
-                  'Close',
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ).then((_) {
-      VisualizerService.stop();
-    });
+    // Visualizer is disabled with just_audio for now
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Visualizer coming soon with just_audio! 📊')),
+    );
   }
 
   @override
   void dispose() { 
-    _player.dispose();
+    if (_isPlayerInitialized) {
+      _player.dispose();
+    }
     _searchController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     NotificationService.cancelNotification();
@@ -536,6 +505,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    if (!_isPlayerInitialized) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(color: Colors.deepPurple),
+        ),
+      );
+    }
+    
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -609,33 +586,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   
                   ListTile(
                     leading: const Icon(Icons.equalizer, color: Colors.orange),
-                    title: const Text('Visualizer', style: TextStyle(fontWeight: FontWeight.w600)),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _showVisualizer();
-                    },
-                  ),
-                  
-                  ListTile(
-                    leading: const Icon(Icons.audiotrack, color: Colors.teal),
-                    title: const Text('Audio Effects', style: TextStyle(fontWeight: FontWeight.w600)),
+                    title: const Text('Equalizer', style: TextStyle(fontWeight: FontWeight.w600)),
                     onTap: () {
                       Navigator.pop(context);
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => const AudioEffectsScreen()),
-                      );
-                    },
-                  ),
-                  
-                  ListTile(
-                    leading: const Icon(Icons.equalizer, color: Colors.deepOrange),
-                    title: const Text('Equalizer'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const EqualizerScreen()),
+                        MaterialPageRoute(builder: (context) => const EqualizerScreen()),
                       );
                     },
                   ),
@@ -669,7 +625,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
             const Padding(
               padding: EdgeInsets.all(20),
-              child: Text("Version 1.0.0\nMade with ❤️ by Bhai Bhai", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 12)),
+              child: Text("Version 2.0.0\nMade with ❤️ by Bhai Bhai", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 12)),
             )
           ],
         ),
