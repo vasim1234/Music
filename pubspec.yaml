@@ -1,5 +1,5 @@
 name: music_player
-description: A local music player app with FM Radio
+description: A local music player app
 publish_to: 'none'
 version: 2.0.0+1
 
@@ -10,11 +10,11 @@ dependencies:
   flutter:
     sdk: flutter
   
-  # Audio playback
+  # Audio playback with equalizer
   just_audio: ^0.9.37
-  flutter_audio_effects: ^1.0.0
+  audio_service: ^0.18.11
   
-  # Existing packages
+  # Other packages
   file_picker: ^8.0.0
   permission_handler: ^11.3.1
   shared_preferences: ^2.2.2

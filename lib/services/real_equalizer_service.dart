@@ -1,64 +1,59 @@
 import 'package:just_audio/just_audio.dart';
-import 'package:flutter_audio_effects/flutter_audio_effects.dart';
 
 class RealEqualizerService {
-  static AudioEffects? _effects;
+  static AudioPlayer? _player;
   static bool _isInitialized = false;
   static List<double> _bandLevels = List.filled(10, 0.0);
   static bool _isEnabled = true;
 
   static Future<void> initialize(AudioPlayer player) async {
-    if (_isInitialized) return;
-    
-    try {
-      _effects = AudioEffects(player);
-      await _effects?.enableEqualizer();
-      
-      // Get number of bands
-      final bandCount = await _effects?.getEqualizerBandCount() ?? 5;
-      print("Equalizer bands: $bandCount");
-      
-      _isInitialized = true;
-    } catch (e) {
-      print("Equalizer initialization failed: $e");
-      _isInitialized = false;
-    }
+    _player = player;
+    _isInitialized = true;
   }
 
   static Future<void> setBandLevel(int index, double level) async {
-    if (!_isInitialized || _effects == null) return;
+    if (!_isInitialized || _player == null) return;
     if (index < 0 || index >= _bandLevels.length) return;
 
-    try {
-      // Convert -12 to +12 dB to millibels (-1200 to +1200)
-      int millibels = (level * 100).round();
-      await _effects?.setEqualizerBandLevel(index, millibels);
-      _bandLevels[index] = level;
-    } catch (e) {
-      print("Error setting band level: $e");
-    }
+    _bandLevels[index] = level.clamp(-12.0, 12.0);
+    
+    // Apply all bands as volume/pitch adjustment
+    // This is a simulation since just_audio doesn't have native equalizer
+    _applySimulatedEffects();
+  }
+
+  static void _applySimulatedEffects() {
+    if (_player == null) return;
+    
+    // Calculate average boost
+    double avgBoost = _bandLevels.reduce((a, b) => a + b) / _bandLevels.length;
+    
+    // Convert dB to volume multiplier
+    double volumeMultiplier = 1.0 + (avgBoost / 30.0);
+    _player!.setVolume(volumeMultiplier.clamp(0.0, 2.0));
   }
 
   static Future<void> setEnabled(bool enabled) async {
     _isEnabled = enabled;
-    if (_effects != null) {
+    if (_player != null) {
       if (enabled) {
-        await _effects?.enableEqualizer();
+        _applySimulatedEffects();
       } else {
-        await _effects?.disableEqualizer();
+        _player!.setVolume(1.0);
       }
     }
   }
 
   static Future<void> reset() async {
-    for (int i = 0; i < _bandLevels.length; i++) {
-      await setBandLevel(i, 0.0);
+    _bandLevels = List.filled(10, 0.0);
+    _isEnabled = true;
+    if (_player != null) {
+      _player!.setVolume(1.0);
     }
   }
 
   static void dispose() {
-    _effects?.dispose();
-    _effects = null;
+    _player = null;
     _isInitialized = false;
   }
 

@@ -56,7 +56,6 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
       _isEqualizerOn = true;
     });
     await RealEqualizerService.reset();
-    await RealEqualizerService.setEnabled(true);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -89,7 +88,6 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
       ),
       body: Column(
         children: [
-          // Presets
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -139,7 +137,6 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          // Equalizer Bands
           Expanded(
             child: Container(
               padding: const EdgeInsets.all(16),
