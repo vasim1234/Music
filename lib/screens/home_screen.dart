@@ -1,18 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:just_audio/just_audio.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/notification_service.dart';
-import '../services/real_equalizer_service.dart';
-import 'equalizer_screen.dart';
 import 'lyrics_screen.dart';
 import 'audio_effects_screen.dart';
 import '../widgets/audio_visualizer.dart';
 import '../services/visualizer_service.dart';
 import 'fm_radio_screen.dart';
 import '../services/album_art_service.dart';
+import '../services/sleep_timer_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -21,7 +20,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
-  late AudioPlayer _player;
+  final AudioPlayer _player = AudioPlayer();
   final TextEditingController _searchController = TextEditingController();
   
   List<Map<String, dynamic>> _savedFolders = [];
@@ -37,42 +36,52 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _hasPermission = false;
   bool is3DOn = false;
   String _currentView = 'Songs';
+  bool _isDarkMode = false;
+  bool _showSleepTimer = false;
 
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
-  bool _isPlayerInitialized = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _loadTheme();
     
-    _initializePlayer();
-  }
-
-  Future<void> _initializePlayer() async {
-    _player = AudioPlayer();
-    _isPlayerInitialized = true;
-    
-    _player.durationStream.listen((d) {
-      if (d != null) setState(() => _duration = d);
-    });
-    _player.positionStream.listen((p) {
-      if (p != null) setState(() => _position = p);
-    });
-    _player.playerStateStream.listen((state) {
-      setState(() => isPlaying = state.playing);
+    _player.onDurationChanged.listen((d) => setState(() => _duration = d));
+    _player.onPositionChanged.listen((p) => setState(() => _position = p));
+    _player.onPlayerStateChanged.listen((state) {
+      setState(() => isPlaying = state == PlayerState.playing);
       _updateLockScreenControls();
     });
-    _player.playbackEventStream.listen((event) {
-      // Handle playback events
-    });
+    _player.onPlayerComplete.listen((event) => playNext());
     
-    // Initialize equalizer
-    await RealEqualizerService.initialize(_player);
+    SleepTimerService.initialize(() {
+      _player.pause();
+      setState(() {
+        isPlaying = false;
+        _showSleepTimer = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('⏰ Sleep timer finished!'), backgroundColor: Colors.blue),
+      );
+    });
     
     _loadData();
     _checkPermission();
+  }
+
+  Future<void> _loadTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isDarkMode = prefs.getBool('dark_mode') ?? false;
+    });
+  }
+
+  Future<void> _toggleTheme() async {
+    setState(() => _isDarkMode = !_isDarkMode);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('dark_mode', _isDarkMode);
   }
 
   @override
@@ -83,7 +92,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _updateLockScreenControls() {
-    if (_currentIndex >= 0 && _filteredPlaylist.isNotEmpty && _isPlayerInitialized) {
+    if (_currentIndex >= 0 && _filteredPlaylist.isNotEmpty) {
       String songName = getFileName(_filteredPlaylist[_currentIndex].path);
       NotificationService.showNowPlayingNotification(
         title: songName,
@@ -91,6 +100,79 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         isPlaying: isPlaying,
       );
     }
+  }
+
+  void _showSleepTimerDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('⏰ Sleep Timer', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Select duration:'),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                _buildTimerChip(5, '5 min'),
+                _buildTimerChip(10, '10 min'),
+                _buildTimerChip(15, '15 min'),
+                _buildTimerChip(30, '30 min'),
+                _buildTimerChip(45, '45 min'),
+                _buildTimerChip(60, '60 min'),
+              ],
+            ),
+            const SizedBox(height: 10),
+            if (SleepTimerService.isRunning)
+              Text(
+                '⏳ ${SleepTimerService.formattedTime} remaining',
+                style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+              ),
+          ],
+        ),
+        actions: [
+          if (SleepTimerService.isRunning)
+            TextButton(
+              onPressed: () {
+                SleepTimerService.stop();
+                setState(() => _showSleepTimer = false);
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('⏰ Sleep timer cancelled'), backgroundColor: Colors.orange),
+                );
+              },
+              child: const Text('Cancel', style: TextStyle(color: Colors.red)),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimerChip(int minutes, String label) {
+    return FilterChip(
+      label: Text(label),
+      onSelected: (_) {
+        SleepTimerService.start(minutes * 60);
+        setState(() => _showSleepTimer = true);
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('⏰ Sleep timer set for $minutes minutes'),
+            backgroundColor: Colors.blue,
+          ),
+        );
+      },
+      backgroundColor: Colors.grey.shade200,
+      selectedColor: Colors.deepPurple,
+      labelStyle: const TextStyle(fontWeight: FontWeight.w500),
+    );
   }
 
   Future<void> _loadData() async {
@@ -279,18 +361,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void toggle3D() {
     setState(() {
       is3DOn = !is3DOn;
-      if (is3DOn && _isPlayerInitialized) { 
-        _player.setVolume(0.8); 
-      } else if (_isPlayerInitialized) { 
-        _player.setVolume(1.0); 
-      }
+      if (is3DOn) { _player.setVolume(0.8); _player.setBalance(0.5); } else { _player.setVolume(1.0); _player.setBalance(0.0); }
     });
   }
 
   Future<void> playSong(String path) async { 
-    if (!_isPlayerInitialized) return;
-    await _player.setFilePath(path); 
-    await _player.play(); 
+    await _player.play(DeviceFileSource(path)); 
     addToRecent(path);
     _updateLockScreenControls();
   }
@@ -356,7 +432,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void openFullScreenPlayer() {
-    if (_currentIndex == -1 || _filteredPlaylist.isEmpty || !_isPlayerInitialized) return;
+    if (_currentIndex == -1 || _filteredPlaylist.isEmpty) return;
     showModalBottomSheet(
       context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
@@ -413,7 +489,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
                 const Spacer(),
                 StreamBuilder<Duration>(
-                  stream: _player.positionStream,
+                  stream: _player.onPositionChanged,
                   builder: (context, snapshot) {
                     Duration pos = snapshot.data ?? _position;
                     return Column(
@@ -440,12 +516,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     IconButton(icon: Icon(_favorites.contains(_filteredPlaylist[_currentIndex].path) ? Icons.favorite : Icons.favorite_border, color: _favorites.contains(_filteredPlaylist[_currentIndex].path) ? Colors.deepPurpleAccent : Colors.white54, size: 28), onPressed: () { toggleFavorite(_filteredPlaylist[_currentIndex].path); setModalState((){}); setState((){}); }),
                     IconButton(iconSize: 45, color: Colors.white, icon: const Icon(Icons.skip_previous), onPressed: () { playPrevious(); setModalState((){}); }),
                     StreamBuilder<PlayerState>(
-                      stream: _player.playerStateStream,
+                      stream: _player.onPlayerStateChanged,
                       builder: (context, snapshot) {
-                        bool playing = snapshot.data?.playing == true || isPlaying;
+                        bool playing = snapshot.data == PlayerState.playing || isPlaying;
                         return Container(
                           height: 75, width: 75, decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.purpleAccent),
-                          child: IconButton(iconSize: 45, color: Colors.white, icon: Icon(playing ? Icons.pause : Icons.play_arrow), onPressed: () async { playing ? await _player.pause() : await _player.play(); }),
+                          child: IconButton(iconSize: 45, color: Colors.white, icon: Icon(playing ? Icons.pause : Icons.play_arrow), onPressed: () async { playing ? await _player.pause() : await _player.resume(); }),
                         );
                       }
                     ),
@@ -463,7 +539,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget buildMiniPlayer() {
-    if (_currentIndex < 0 || _filteredPlaylist.isEmpty || !_isPlayerInitialized) return const SizedBox.shrink();
+    if (_currentIndex < 0 || _filteredPlaylist.isEmpty) return const SizedBox.shrink();
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.pink.shade100, Colors.purple.shade100]), borderRadius: BorderRadius.circular(30), boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 5))]),
@@ -477,7 +553,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         title: Text(getFileName(_filteredPlaylist[_currentIndex].path), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
         subtitle: const Text("Local Audio", maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Colors.black54)),
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-          IconButton(icon: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled, color: Colors.black54, size: 35), onPressed: () { isPlaying ? _player.pause() : _player.play(); }),
+          IconButton(icon: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled, color: Colors.black54, size: 35), onPressed: () { isPlaying ? _player.pause() : _player.resume(); }),
           IconButton(icon: const Icon(Icons.skip_next, color: Colors.black54, size: 30), onPressed: playNext),
         ]),
         onTap: openFullScreenPlayer,
@@ -486,17 +562,72 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _showVisualizer() {
-    // Visualizer is disabled with just_audio for now
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Visualizer coming soon with just_audio! 📊')),
-    );
+    if (_currentIndex < 0 || _filteredPlaylist.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Play a song first!')),
+      );
+      return;
+    }
+    VisualizerService.start(_player);
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          height: 250,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.black87,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Column(
+            children: [
+              const Text(
+                'Audio Visualizer',
+                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Visualizing:',
+                style: TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+              Text(
+                getFileName(_filteredPlaylist[_currentIndex].path),
+                style: const TextStyle(color: Colors.white70, fontSize: 14),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 20),
+              AudioVisualizer(
+                barCount: 20,
+                color: Colors.deepPurpleAccent,
+                height: 100,
+                animate: true,
+              ),
+              const SizedBox(height: 20),
+              TextButton(
+                onPressed: () {
+                  VisualizerService.stop();
+                  Navigator.pop(context);
+                },
+                child: const Text(
+                  'Close',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ).then((_) {
+      VisualizerService.stop();
+    });
   }
 
   @override
   void dispose() { 
-    if (_isPlayerInitialized) {
-      _player.dispose();
-    }
+    _player.dispose();
     _searchController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     NotificationService.cancelNotification();
@@ -505,26 +636,40 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    if (!_isPlayerInitialized) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(color: Colors.deepPurple),
-        ),
-      );
-    }
+    final bgColor = _isDarkMode ? Colors.black : Colors.white;
+    final textColor = _isDarkMode ? Colors.white : Colors.black87;
+    final cardColor = _isDarkMode ? Colors.grey.shade900 : Colors.white;
+    final appBarColor = _isDarkMode ? Colors.grey.shade900 : Colors.white;
     
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: Colors.white, elevation: 0, iconTheme: const IconThemeData(color: Colors.black87),
+        backgroundColor: appBarColor, 
+        elevation: 0, 
+        iconTheme: IconThemeData(color: textColor),
         title: Container(
-          height: 40, decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
-          child: TextField(controller: _searchController, onChanged: filterSearchResults, decoration: const InputDecoration(hintText: "Search songs, playlists...", hintStyle: TextStyle(fontSize: 14, color: Colors.grey), prefixIcon: Icon(Icons.search, color: Colors.grey, size: 20), border: InputBorder.none, contentPadding: EdgeInsets.symmetric(vertical: 10))),
+          height: 40, 
+          decoration: BoxDecoration(
+            color: _isDarkMode ? Colors.grey.shade800 : Colors.grey.shade100, 
+            borderRadius: BorderRadius.circular(20)
+          ),
+          child: TextField(
+            controller: _searchController, 
+            onChanged: filterSearchResults, 
+            style: TextStyle(color: textColor),
+            decoration: InputDecoration(
+              hintText: "Search songs, playlists...", 
+              hintStyle: TextStyle(fontSize: 14, color: _isDarkMode ? Colors.grey.shade400 : Colors.grey), 
+              prefixIcon: Icon(Icons.search, color: _isDarkMode ? Colors.grey.shade400 : Colors.grey, size: 20), 
+              border: InputBorder.none, 
+              contentPadding: const EdgeInsets.symmetric(vertical: 10)
+            ),
+          ),
         ),
       ),
       
       drawer: Drawer(
-        backgroundColor: Colors.white,
+        backgroundColor: _isDarkMode ? Colors.grey.shade900 : Colors.white,
         child: Column(
           children: [
             Container(
@@ -556,8 +701,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               child: ListView(
                 padding: EdgeInsets.zero,
                 children: [
-                  ListTile(leading: const Icon(Icons.folder, color: Colors.deepPurple), title: const Text('Choose Folders', style: TextStyle(fontWeight: FontWeight.w600)), onTap: () { Navigator.pop(context); openFolderManager(); }),
-                  ListTile(leading: const Icon(Icons.refresh, color: Colors.blueAccent), title: const Text('Scan Music', style: TextStyle(fontWeight: FontWeight.w600)), onTap: () { Navigator.pop(context); updatePlaylistFromFolders(); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Scanning...'))); }),
+                  ListTile(
+                    leading: const Icon(Icons.folder, color: Colors.deepPurple), 
+                    title: const Text('Choose Folders', style: TextStyle(fontWeight: FontWeight.w600)), 
+                    onTap: () { Navigator.pop(context); openFolderManager(); }
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.refresh, color: Colors.blueAccent), 
+                    title: const Text('Scan Music', style: TextStyle(fontWeight: FontWeight.w600)), 
+                    onTap: () { Navigator.pop(context); updatePlaylistFromFolders(); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Scanning...'))); }
+                  ),
                   const Divider(),
                   
                   ListTile(
@@ -586,12 +739,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   
                   ListTile(
                     leading: const Icon(Icons.equalizer, color: Colors.orange),
-                    title: const Text('Equalizer', style: TextStyle(fontWeight: FontWeight.w600)),
+                    title: const Text('Visualizer', style: TextStyle(fontWeight: FontWeight.w600)),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showVisualizer();
+                    },
+                  ),
+                  
+                  ListTile(
+                    leading: const Icon(Icons.audiotrack, color: Colors.teal),
+                    title: const Text('Audio Effects', style: TextStyle(fontWeight: FontWeight.w600)),
                     onTap: () {
                       Navigator.pop(context);
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => const EqualizerScreen()),
+                        MaterialPageRoute(builder: (context) => const AudioEffectsScreen()),
                       );
                     },
                   ),
@@ -608,24 +770,61 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     },
                   ),
                   
+                  // ⏰ SLEEP TIMER - NEW!
+                  ListTile(
+                    leading: const Icon(Icons.timer, color: Colors.orange),
+                    title: const Text('Sleep Timer', style: TextStyle(fontWeight: FontWeight.w600)),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showSleepTimerDialog();
+                    },
+                  ),
+                  
+                  // 🌙 THEME TOGGLE - NEW!
+                  ListTile(
+                    leading: Icon(_isDarkMode ? Icons.dark_mode : Icons.light_mode, color: Colors.purple),
+                    title: Text(_isDarkMode ? 'Dark Mode' : 'Light Mode', style: const TextStyle(fontWeight: FontWeight.w600)),
+                    trailing: Switch(
+                      value: _isDarkMode,
+                      onChanged: (_) => _toggleTheme(),
+                      activeColor: Colors.deepPurple,
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _toggleTheme();
+                    },
+                  ),
+                  
                   ListTile(
                     leading: const Icon(Icons.palette, color: Colors.pink),
                     title: const Text('Themes', style: TextStyle(fontWeight: FontWeight.w600)),
                     onTap: () {
                       Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Themes Coming Soon! 🎨')));
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('More Themes Coming Soon! 🎨')));
                     }
                   ),
                   
                   const Divider(),
-                  ListTile(leading: Icon(Icons.settings, color: Colors.grey.shade700), title: const Text('Settings'), onTap: () {}),
-                  ListTile(leading: const Icon(Icons.share, color: Colors.green), title: const Text('Share App'), onTap: () {}),
+                  ListTile(
+                    leading: Icon(Icons.settings, color: _isDarkMode ? Colors.grey.shade400 : Colors.grey.shade700), 
+                    title: const Text('Settings'), 
+                    onTap: () {}
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.share, color: Colors.green), 
+                    title: const Text('Share App'), 
+                    onTap: () {}
+                  ),
                 ],
               ),
             ),
-            const Padding(
-              padding: EdgeInsets.all(20),
-              child: Text("Version 2.0.0\nMade with ❤️ by Bhai Bhai", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 12)),
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Text(
+                "Version 2.0.0\nMade with ❤️ by Bhai Bhai",
+                textAlign: TextAlign.center,
+                style: TextStyle(color: _isDarkMode ? Colors.grey.shade400 : Colors.grey, fontSize: 12),
+              ),
             )
           ],
         ),
@@ -633,6 +832,36 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       
       body: Column(
         children: [
+          // Sleep Timer Indicator
+          if (_showSleepTimer && SleepTimerService.isRunning)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: Colors.orange.shade100,
+              child: Row(
+                children: [
+                  const Icon(Icons.timer, color: Colors.orange, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '⏰ Sleep timer: ${SleepTimerService.formattedTime} remaining',
+                      style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.orange, size: 20),
+                    onPressed: () {
+                      SleepTimerService.stop();
+                      setState(() => _showSleepTimer = false);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('⏰ Sleep timer cancelled'), backgroundColor: Colors.orange),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
             child: Row(
@@ -748,7 +977,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                       Icon(_currentView == 'Recent' ? Icons.history_toggle_off : Icons.library_music, size: 60, color: Colors.black12), 
                       const SizedBox(height: 10), 
-                      Text(_currentView == 'Favorites' ? "No favorites yet" : _currentView == 'Recent' ? "No listening history yet" : "No songs found", style: const TextStyle(color: Colors.grey, fontSize: 16, fontWeight: FontWeight.bold)),
+                      Text(_currentView == 'Favorites' ? "No favorites yet" : _currentView == 'Recent' ? "No listening history yet" : "No songs found", style: TextStyle(color: _isDarkMode ? Colors.grey.shade400 : Colors.grey, fontSize: 16, fontWeight: FontWeight.bold)),
                       if (_currentView == 'Songs') Column(children: [const SizedBox(height: 10), const Text("Open side menu (☰) to choose folders", style: TextStyle(color: Colors.grey, fontSize: 14)), const SizedBox(height: 20), ElevatedButton.icon(onPressed: openFolderManager, icon: const Icon(Icons.folder_open), label: const Text("Open Folder Manager"), style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white))]),
                     ]))
                   : ListView.builder(
@@ -766,8 +995,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               songName: songName,
                               size: 50,
                             ),
-                            title: Text(songName, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: isCurrent ? FontWeight.bold : FontWeight.w500, color: isCurrent ? Colors.deepPurple : Colors.black87)),
-                            subtitle: Text("Local Audio", maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                            title: Text(songName, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: isCurrent ? FontWeight.bold : FontWeight.w500, color: isCurrent ? Colors.deepPurple : textColor)),
+                            subtitle: Text("Local Audio", maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: _isDarkMode ? Colors.grey.shade400 : Colors.grey.shade600)),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -785,7 +1014,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
-        selectedItemColor: Colors.black, unselectedItemColor: Colors.grey, showSelectedLabels: true, showUnselectedLabels: true,
+        selectedItemColor: _isDarkMode ? Colors.white : Colors.black, 
+        unselectedItemColor: _isDarkMode ? Colors.grey.shade600 : Colors.grey, 
+        showSelectedLabels: true, 
+        showUnselectedLabels: true,
+        backgroundColor: _isDarkMode ? Colors.grey.shade900 : Colors.white,
         items: const [BottomNavigationBarItem(icon: Icon(Icons.headphones), label: "My music"), BottomNavigationBarItem(icon: Icon(Icons.play_circle_outline), label: "Watch")],
       ),
     );
