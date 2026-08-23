@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../services/audio_effects_service.dart';
+import '../services/real_equalizer_service.dart';
 
 class EqualizerScreen extends StatefulWidget {
   const EqualizerScreen({Key? key}) : super(key: key);
@@ -15,54 +15,57 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
   int _selectedPreset = 0;
 
   final List<Map<String, dynamic>> _presets = [
-    {'name': 'Normal', 'values': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]},
-    {'name': 'Bass Booster', 'values': [4.0, 6.0, 6.0, 4.0, 2.0, 0.0, -2.0, -4.0, -4.0, -6.0]},
-    {'name': 'Treble Booster', 'values': [-4.0, -4.0, -2.0, 0.0, 2.0, 4.0, 6.0, 6.0, 4.0, 4.0]},
-    {'name': 'Vocal', 'values': [-2.0, -2.0, -2.0, 0.0, 2.0, 4.0, 4.0, 2.0, 0.0, -2.0]},
-    {'name': 'Rock', 'values': [4.0, 4.0, 2.0, 0.0, -2.0, -4.0, -2.0, 2.0, 4.0, 4.0]},
-    {'name': 'Pop', 'values': [-2.0, -2.0, 0.0, 2.0, 4.0, 4.0, 2.0, 0.0, -2.0, -2.0]},
-    {'name': 'Classical', 'values': [4.0, 4.0, 2.0, 0.0, 0.0, 0.0, 0.0, 2.0, 4.0, 4.0]},
-    {'name': 'Jazz', 'values': [2.0, 2.0, 2.0, 0.0, 0.0, 0.0, 0.0, 2.0, 4.0, 4.0]},
-    {'name': 'Custom', 'values': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]},
+    {'name': 'Normal', 'values': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]},
+    {'name': 'Bass Booster', 'values': [4, 6, 6, 4, 2, 0, -2, -4, -4, -6]},
+    {'name': 'Treble Booster', 'values': [-4, -4, -2, 0, 2, 4, 6, 6, 4, 4]},
+    {'name': 'Vocal', 'values': [-2, -2, -2, 0, 2, 4, 4, 2, 0, -2]},
+    {'name': 'Rock', 'values': [4, 4, 2, 0, -2, -4, -2, 2, 4, 4]},
+    {'name': 'Pop', 'values': [-2, -2, 0, 2, 4, 4, 2, 0, -2, -2]},
+    {'name': 'Classical', 'values': [4, 4, 2, 0, 0, 0, 0, 2, 4, 4]},
+    {'name': 'Jazz', 'values': [2, 2, 2, 0, 0, 0, 0, 2, 4, 4]},
   ];
 
   @override
   void initState() {
     super.initState();
-    AudioEffectsService.initialize();
-    _bandValues = List<double>.from(AudioEffectsService.equalizerBands);
-    _isEqualizerOn = AudioEffectsService.equalizerEnabled;
+    _bandValues = List<double>.from(RealEqualizerService.bandLevels);
+    _isEqualizerOn = RealEqualizerService.isEnabled;
   }
 
-  void _applyEqualizer() {
+  Future<void> _applyEqualizer() async {
     for (int i = 0; i < _bandValues.length; i++) {
-      AudioEffectsService.setEqualizerBand(i, _bandValues[i]);
+      await RealEqualizerService.setBandLevel(i, _bandValues[i]);
     }
-    AudioEffectsService.toggleEqualizer(_isEqualizerOn);
+    await RealEqualizerService.setEnabled(_isEqualizerOn);
     
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('✅ Equalizer Applied!'),
-        duration: Duration(seconds: 1),
-        backgroundColor: Colors.green,
-      ),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_isEqualizerOn ? '✅ Equalizer Applied!' : '⏸️ Equalizer Disabled'),
+          duration: const Duration(seconds: 1),
+          backgroundColor: _isEqualizerOn ? Colors.green : Colors.orange,
+        ),
+      );
+    }
   }
 
-  void _resetEqualizer() {
+  Future<void> _resetEqualizer() async {
     setState(() {
-      _bandValues = List.filled(10, 0.0);
+      _bandValues = List.filled(10, 0);
       _selectedPreset = 0;
       _isEqualizerOn = true;
     });
-    AudioEffectsService.resetEqualizer();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('🔄 Equalizer Reset!'),
-        duration: Duration(seconds: 1),
-        backgroundColor: Colors.orange,
-      ),
-    );
+    await RealEqualizerService.reset();
+    await RealEqualizerService.setEnabled(true);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('🔄 Equalizer Reset!'),
+          duration: Duration(seconds: 1),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    }
   }
 
   @override
@@ -96,7 +99,7 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Presets', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+                const Text('Presets', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 10),
                 SizedBox(
                   height: 40,
@@ -109,9 +112,7 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
                         onTap: () {
                           setState(() {
                             _selectedPreset = index;
-                            if (index < _presets.length - 1) {
-                              _bandValues = List<double>.from(_presets[index]['values']);
-                            }
+                            _bandValues = List<double>.from(_presets[index]['values']);
                           });
                         },
                         child: Container(
@@ -149,7 +150,7 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
               ),
               child: Column(
                 children: [
-                  const Text('Frequency (Hz)', style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w500)),
+                  const Text('Frequency (Hz)', style: TextStyle(fontSize: 12, color: Colors.grey)),
                   const SizedBox(height: 15),
                   Expanded(
                     child: SingleChildScrollView(
@@ -297,5 +298,11 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
         ),
       ],
     );
+  }
+
+  @override
+  void dispose() {
+    RealEqualizerService.dispose();
+    super.dispose();
   }
 }
