@@ -12,7 +12,7 @@ dependencies:
   
   # Audio playback
   just_audio: ^0.9.37
-  android_equalizer: ^0.0.8
+  flutter_audio_effects: ^1.0.0
   
   # Existing packages
   file_picker: ^8.0.0

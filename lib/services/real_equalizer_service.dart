@@ -1,9 +1,8 @@
 import 'package:just_audio/just_audio.dart';
-import 'package:android_equalizer/android_equalizer.dart';
+import 'package:flutter_audio_effects/flutter_audio_effects.dart';
 
 class RealEqualizerService {
-  static AndroidEqualizer? _equalizer;
-  static int _audioSessionId = 0;
+  static AudioEffects? _effects;
   static bool _isInitialized = false;
   static List<double> _bandLevels = List.filled(10, 0.0);
   static bool _isEnabled = true;
@@ -12,12 +11,11 @@ class RealEqualizerService {
     if (_isInitialized) return;
     
     try {
-      _audioSessionId = await player.getAudioSessionId();
-      _equalizer = AndroidEqualizer(_audioSessionId);
-      await _equalizer?.setEnabled(true);
+      _effects = AudioEffects(player);
+      await _effects?.enableEqualizer();
       
-      // Get number of bands supported
-      final bandCount = await _equalizer?.getNumberOfBands() ?? 5;
+      // Get number of bands
+      final bandCount = await _effects?.getEqualizerBandCount() ?? 5;
       print("Equalizer bands: $bandCount");
       
       _isInitialized = true;
@@ -28,13 +26,13 @@ class RealEqualizerService {
   }
 
   static Future<void> setBandLevel(int index, double level) async {
-    if (!_isInitialized || _equalizer == null) return;
+    if (!_isInitialized || _effects == null) return;
     if (index < 0 || index >= _bandLevels.length) return;
 
     try {
       // Convert -12 to +12 dB to millibels (-1200 to +1200)
       int millibels = (level * 100).round();
-      await _equalizer?.setBandLevel(index, millibels);
+      await _effects?.setEqualizerBandLevel(index, millibels);
       _bandLevels[index] = level;
     } catch (e) {
       print("Error setting band level: $e");
@@ -43,8 +41,12 @@ class RealEqualizerService {
 
   static Future<void> setEnabled(bool enabled) async {
     _isEnabled = enabled;
-    if (_equalizer != null) {
-      await _equalizer?.setEnabled(enabled);
+    if (_effects != null) {
+      if (enabled) {
+        await _effects?.enableEqualizer();
+      } else {
+        await _effects?.disableEqualizer();
+      }
     }
   }
 
@@ -55,8 +57,8 @@ class RealEqualizerService {
   }
 
   static void dispose() {
-    _equalizer?.release();
-    _equalizer = null;
+    _effects?.dispose();
+    _effects = null;
     _isInitialized = false;
   }
 
