@@ -32,24 +32,11 @@ jobs:
 
       - name: Fix Android SDK to 37 & Enable Desugaring
         run: |
-          # Fix for build.gradle.kts (new Flutter projects)
           if [ -f "android/app/build.gradle.kts" ]; then
             sed -i 's/compileSdk = .*/compileSdk = 37/' android/app/build.gradle.kts
             sed -i 's/targetSdk = .*/targetSdk = 37/' android/app/build.gradle.kts
             sed -i 's/minSdk = .*/minSdk = 24/' android/app/build.gradle.kts
-            # Add desugaring
-            cat << 'GRADLE_EOF' >> android/app/build.gradle.kts
-          android {
-              compileOptions {
-                  isCoreLibraryDesugaringEnabled = true
-              }
-          }
-          dependencies {
-              coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
-          }
-          GRADLE_EOF
           else
-            # Fix for build.gradle (older Flutter projects)
             sed -i 's/compileSdkVersion .*/compileSdkVersion 37/' android/app/build.gradle
             sed -i 's/targetSdkVersion .*/targetSdkVersion 37/' android/app/build.gradle
             sed -i 's/minSdkVersion .*/minSdkVersion 24/' android/app/build.gradle
@@ -309,10 +296,9 @@ jobs:
             Future<void> _addFolder() async {
               await _requestStorage();
               try {
-                // Fix: Use FilePicker.platform.getDirectoryPath() with null check
-                final result = await FilePicker.platform.getDirectoryPath();
-                if (result == null) return;
-                final path = result;
+                // FIX: Use FilePicker.getDirectoryPath() without .platform
+                final path = await FilePicker.getDirectoryPath();
+                if (path == null) return;
                 if (_folders.any((f) => f['path'] == path)) {
                   if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Folder already added.')));
                   return;
