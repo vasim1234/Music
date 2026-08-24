@@ -32,14 +32,11 @@ jobs:
 
       - name: Fix Android SDK & Enable Core Library Desugaring
         run: |
-          # For build.gradle.kts (new Flutter projects)
           if [ -f "android/app/build.gradle.kts" ]; then
-            # Fix SDK versions
             sed -i 's/compileSdk = .*/compileSdk = 37/' android/app/build.gradle.kts
             sed -i 's/targetSdk = .*/targetSdk = 37/' android/app/build.gradle.kts
             sed -i 's/minSdk = .*/minSdk = 24/' android/app/build.gradle.kts
             
-            # Enable Core Library Desugaring in build.gradle.kts
             cat << 'GRADLE_EOF' >> android/app/build.gradle.kts
           android {
               compileOptions {
@@ -53,32 +50,31 @@ jobs:
           }
           GRADLE_EOF
           else
-            # For build.gradle (older Flutter projects)
-            # Fix SDK versions
             sed -i 's/compileSdkVersion .*/compileSdkVersion 37/' android/app/build.gradle
             sed -i 's/targetSdkVersion .*/targetSdkVersion 37/' android/app/build.gradle
             sed -i 's/minSdkVersion .*/minSdkVersion 24/' android/app/build.gradle
-            
-            # Enable Core Library Desugaring in build.gradle
             sed -i '/compileOptions {/a \        coreLibraryDesugaringEnabled true' android/app/build.gradle
             echo "dependencies { coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4' }" >> android/app/build.gradle
           fi
 
-      - name: Force All Plugins to SDK 37
+      - name: Add Dependencies (with specific versions)
+        run: |
+          flutter pub add audioplayers:^6.0.0
+          flutter pub add file_picker:^8.0.0
+          flutter pub add permission_handler:^11.0.0
+          flutter pub add shared_preferences:^2.0.0
+          flutter pub add flutter_local_notifications:^17.0.0
+          flutter pub get
+
+      - name: Force All Plugins to SDK 37 (After Dependencies)
         run: |
           # Force all plugins to use SDK 37
           find ~/.pub-cache/hosted/pub.dev/ -name "build.gradle" 2>/dev/null | while read -r file; do
-            # Fix compileSdkVersion
             sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 37/g' "$file" 2>/dev/null || true
-            # Fix compileSdk (for newer syntax)
             sed -i 's/compileSdk = [0-9]*/compileSdk = 37/g' "$file" 2>/dev/null || true
-            # Fix targetSdkVersion
             sed -i 's/targetSdkVersion [0-9]*/targetSdkVersion 37/g' "$file" 2>/dev/null || true
-            # Fix targetSdk
             sed -i 's/targetSdk = [0-9]*/targetSdk = 37/g' "$file" 2>/dev/null || true
-            # Fix minSdkVersion
             sed -i 's/minSdkVersion [0-9]*/minSdkVersion 24/g' "$file" 2>/dev/null || true
-            # Fix minSdk
             sed -i 's/minSdk = [0-9]*/minSdk = 24/g' "$file" 2>/dev/null || true
           done
           
@@ -94,15 +90,6 @@ jobs:
             sed -i 's/targetSdk = [0-9]*/targetSdk = 37/g' android/app/build.gradle.kts
             sed -i 's/minSdk = [0-9]*/minSdk = 24/g' android/app/build.gradle.kts
           fi
-
-      - name: Add Dependencies (with specific versions)
-        run: |
-          flutter pub add audioplayers:^6.0.0
-          flutter pub add file_picker:^8.0.0
-          flutter pub add permission_handler:^11.0.0
-          flutter pub add shared_preferences:^2.0.0
-          flutter pub add flutter_local_notifications:^17.0.0
-          flutter pub get
 
       - name: Fix Namespace for All Packages (Smart - Check First)
         run: |
