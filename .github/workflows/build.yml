@@ -42,41 +42,66 @@ jobs:
             sed -i 's/minSdkVersion .*/minSdkVersion 24/' android/app/build.gradle
           fi
 
-      - name: Add Dependencies
+      - name: Add Dependencies (with specific versions)
         run: |
-          flutter pub add audioplayers file_picker permission_handler shared_preferences flutter_local_notifications
+          flutter pub add audioplayers:^6.0.0
+          flutter pub add file_picker:^8.0.0
+          flutter pub add permission_handler:^11.0.0
+          flutter pub add shared_preferences:^2.0.0
+          flutter pub add flutter_local_notifications:^17.0.0
           flutter pub get
 
-      - name: Fix Namespace for All Packages (Corrected)
+      - name: Fix Namespace for All Packages (Smart - Check First)
         run: |
-          # Fix audioplayers_android namespace
-          find ~/.pub-cache/hosted/pub.dev/audioplayers_android-* -name "build.gradle" -exec sed -i '/android {/a \    namespace "com.audioplayers.android"' {} \; 2>/dev/null || true
-          
-          # Fix on_audio_query_android namespace (if exists)
-          find ~/.pub-cache/hosted/pub.dev/on_audio_query_android-* -name "build.gradle" -exec sed -i '/android {/a \    namespace "com.on_audio_query.android"' {} \; 2>/dev/null || true
-          
-          # Fix permission_handler_android namespace
-          find ~/.pub-cache/hosted/pub.dev/permission_handler_android-* -name "build.gradle" -exec sed -i '/android {/a \    namespace "com.permission_handler.android"' {} \; 2>/dev/null || true
-          
-          # Fix file_picker namespace
-          find ~/.pub-cache/hosted/pub.dev/file_picker-* -name "build.gradle" -exec sed -i '/android {/a \    namespace "com.file_picker"' {} \; 2>/dev/null || true
-          
-          # Fix shared_preferences_android namespace
-          find ~/.pub-cache/hosted/pub.dev/shared_preferences_android-* -name "build.gradle" -exec sed -i '/android {/a \    namespace "com.shared_preferences.android"' {} \; 2>/dev/null || true
-          
-          # Fix flutter_local_notifications namespace
-          find ~/.pub-cache/hosted/pub.dev/flutter_local_notifications-* -name "build.gradle" -exec sed -i '/android {/a \    namespace "com.flutter_local_notifications"' {} \; 2>/dev/null || true
+          # Function to add namespace only if missing
+          add_namespace_if_missing() {
+            local file=$1
+            local namespace=$2
+            if [ -f "$file" ]; then
+              if ! grep -q "namespace" "$file"; then
+                sed -i "/android {/a \    namespace \"$namespace\"" "$file"
+                echo "✅ Added namespace $namespace to $file"
+              else
+                echo "⏭️ Namespace already exists in $file, skipping..."
+              fi
+            fi
+          }
+
+          # Fix each package only if namespace missing
+          for pkg in audioplayers_android permission_handler_android file_picker shared_preferences_android flutter_local_notifications; do
+            find ~/.pub-cache/hosted/pub.dev/$pkg-* -name "build.gradle" 2>/dev/null | while read -r file; do
+              case $pkg in
+                audioplayers_android)
+                  add_namespace_if_missing "$file" "com.audioplayers.android"
+                  ;;
+                permission_handler_android)
+                  add_namespace_if_missing "$file" "com.permission_handler.android"
+                  ;;
+                file_picker)
+                  add_namespace_if_missing "$file" "com.file_picker"
+                  ;;
+                shared_preferences_android)
+                  add_namespace_if_missing "$file" "com.shared_preferences.android"
+                  ;;
+                flutter_local_notifications)
+                  add_namespace_if_missing "$file" "com.flutter_local_notifications"
+                  ;;
+              esac
+            done
+          done
           
           # Fix main app namespace
           if [ -f "android/app/build.gradle" ]; then
             if ! grep -q "namespace" android/app/build.gradle; then
               sed -i '/android {/a \    namespace "com.example.music"' android/app/build.gradle
+              echo "✅ Added namespace to app/build.gradle"
             fi
           fi
           
           if [ -f "android/app/build.gradle.kts" ]; then
             if ! grep -q "namespace" android/app/build.gradle.kts; then
               sed -i '/android {/a \    namespace = "com.example.music"' android/app/build.gradle.kts
+              echo "✅ Added namespace to app/build.gradle.kts"
             fi
           fi
 
