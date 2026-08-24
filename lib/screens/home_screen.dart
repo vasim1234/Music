@@ -30,6 +30,7 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription? _stateSub, _durationSub, _positionSub, _completeSub;
   bool _hasPermission = false;
   bool _isScanning = false;
+  bool _isPermissionChecked = false;
 
   @override
   void initState() {
@@ -49,23 +50,37 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _checkPermissionAndLoad() async {
+    setState(() => _isPermissionChecked = false);
+    
     if (Platform.isAndroid) {
-      final status = await Permission.manageExternalStorage.status;
-      final audioStatus = await Permission.audio.status;
+      // Try to get storage permission (simpler approach)
+      PermissionStatus status = await Permission.storage.status;
       
+      // If not granted, request it
       if (!status.isGranted) {
-        final result = await Permission.manageExternalStorage.request();
-        if (result.isGranted) {
-          setState(() => _hasPermission = true);
-          _load();
-        } else {
-          _showPermissionDialog();
-        }
-      } else {
-        setState(() => _hasPermission = true);
+        status = await Permission.storage.request();
+      }
+      
+      // Also try audio permission
+      if (status.isGranted) {
+        await Permission.audio.request();
+      }
+      
+      // Check if we have permission
+      final isGranted = status.isGranted;
+      setState(() {
+        _hasPermission = isGranted;
+        _isPermissionChecked = true;
+      });
+      
+      if (isGranted) {
         _load();
       }
     } else {
+      setState(() {
+        _hasPermission = true;
+        _isPermissionChecked = true;
+      });
       _load();
     }
   }
@@ -75,10 +90,10 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text('⚠️ Permission Required'),
+        title: const Text('⚠️ Storage Permission Required'),
         content: const Text(
           'App needs storage permission to access your music files.\n\n'
-          'Please go to Settings and enable "Allow management of all files" for this app.'
+          'Please allow storage permission to scan your songs.'
         ),
         actions: [
           TextButton(
@@ -129,12 +144,10 @@ class _HomeScreenState extends State<HomeScreen> {
     await p.setStringList('playlists', _playlists.map((e) => '${e['name']}|||${(e['songs'] as List<String>).join('|')}').toList());
   }
 
-  // ✅ FIX: Safe recursive scanning with error handling
   Future<List<File>> _scanDirectorySafe(Directory dir) async {
     final List<File> foundFiles = [];
     try {
       final List<FileSystemEntity> entities = await dir.list().toList();
-      
       for (final entity in entities) {
         try {
           if (entity is File) {
@@ -143,68 +156,36 @@ class _HomeScreenState extends State<HomeScreen> {
               foundFiles.add(entity);
             }
           } else if (entity is Directory) {
-            // Skip hidden directories
             final String dirName = entity.path.split(Platform.pathSeparator).last;
             if (dirName.startsWith('.')) continue;
-            
-            // Recursively scan subdirectories with error handling
             try {
               final subFiles = await _scanDirectorySafe(entity);
               foundFiles.addAll(subFiles);
-            } catch (e) {
-              // Skip this subdirectory if error occurs
-              print("⚠️ Error scanning ${entity.path}: $e");
-              continue;
-            }
+            } catch (e) { continue; }
           }
-        } catch (e) {
-          // Skip individual file/dir if error occurs
-          print("⚠️ Error processing ${entity.path}: $e");
-          continue;
-        }
+        } catch (e) { continue; }
       }
-    } catch (e) {
-      print("⚠️ Error scanning directory: $e");
-    }
+    } catch (e) { print("Error scanning: $e"); }
     return foundFiles;
   }
 
   Future<void> _scan() async {
     if (_isScanning) return;
-    
     setState(() {
       _isScanning = true;
       _songs.clear();
       _visibleSongs.clear();
     });
-
     final result = <File>[];
-    int folderCount = 0;
-    
     for (final folder in _folders.where((e) => e['enabled'] == true)) {
       final dir = Directory(folder['path'] as String);
-      if (!await dir.exists()) {
-        print("⚠️ Directory not exists: ${folder['path']}");
-        continue;
-      }
-      
-      folderCount++;
-      print("📁 Scanning: ${folder['path']} ($folderCount/${_folders.length})");
-      
+      if (!await dir.exists()) continue;
       try {
         final files = await _scanDirectorySafe(dir);
         result.addAll(files);
-        print("✅ Found ${files.length} songs in ${folder['path']}");
-      } catch (e) {
-        print("⚠️ Error scanning folder ${folder['path']}: $e");
-        continue;
-      }
+      } catch (e) { continue; }
     }
-    
     result.sort((a, b) => fileName(a.path).toLowerCase().compareTo(fileName(b.path).toLowerCase()));
-    
-    print("🎵 Total songs found: ${result.length}");
-    
     if (!mounted) return;
     setState(() {
       _songs..clear()..addAll(result);
@@ -288,9 +269,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _addFolder() async {
+    // Check permission first
     if (!_hasPermission) {
       await _checkPermissionAndLoad();
-      if (!_hasPermission) return;
+      if (!_hasPermission) {
+        _showPermissionDialog();
+        return;
+      }
     }
     
     try {
@@ -544,6 +529,19 @@ class _HomeScreenState extends State<HomeScreen> {
             CircularProgressIndicator(color: Colors.deepPurple),
             SizedBox(height: 16),
             Text('Scanning music files...', style: TextStyle(color: Colors.grey)),
+          ],
+        ),
+      );
+    }
+    
+    if (!_isPermissionChecked) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(color: Colors.deepPurple),
+            SizedBox(height: 16),
+            Text('Checking permissions...', style: TextStyle(color: Colors.grey)),
           ],
         ),
       );
