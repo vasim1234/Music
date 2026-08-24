@@ -45,10 +45,29 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) setState(() => _position = p);
     });
     _completeSub = _player.onPlayerComplete.listen((_) => _next());
-    
-    // Directly load without permission check
-    _load();
-    setState(() => _isLoading = false);
+    _requestPermissionsAndLoad();
+  }
+
+  Future<void> _requestPermissionsAndLoad() async {
+    if (Platform.isAndroid) {
+      // Android 13+ requires READ_MEDIA_AUDIO
+      if (await Permission.storage.status.isGranted ||
+          await Permission.audio.status.isGranted ||
+          await Permission.photos.status.isGranted) {
+        _load();
+      } else {
+        // Request all permissions
+        await [
+          Permission.storage,
+          Permission.audio,
+          Permission.photos,
+          Permission.manageExternalStorage,
+        ].request();
+        _load();
+      }
+    } else {
+      _load();
+    }
   }
 
   Future<void> _load() async {
@@ -73,6 +92,7 @@ class _HomeScreenState extends State<HomeScreen> {
     })));
     await _scan();
     if (mounted) setState(() {});
+    setState(() => _isLoading = false);
   }
 
   Future<void> _save() async {
@@ -81,6 +101,24 @@ class _HomeScreenState extends State<HomeScreen> {
     await p.setStringList('favorites', _favorites);
     await p.setStringList('recent', _recent);
     await p.setStringList('playlists', _playlists.map((e) => '${e['name']}|||${(e['songs'] as List<String>).join('|')}').toList());
+  }
+
+  // ✅ FIX: Scoped Storage - Use FilePicker with proper path handling
+  Future<List<File>> _getAudioFilesFromUri(String path) async {
+    final List<File> audioFiles = [];
+    try {
+      final dir = Directory(path);
+      if (await dir.exists()) {
+        await for (final entity in dir.list(recursive: true, followLinks: false)) {
+          if (entity is File && _isAudio(entity.path)) {
+            audioFiles.add(entity);
+          }
+        }
+      }
+    } catch (e) {
+      print("Error reading directory: $e");
+    }
+    return audioFiles;
   }
 
   Future<List<File>> _scanDirectorySafe(Directory dir) async {
@@ -122,7 +160,11 @@ class _HomeScreenState extends State<HomeScreen> {
       try {
         final files = await _scanDirectorySafe(dir);
         result.addAll(files);
-      } catch (e) { continue; }
+        print("✅ Found ${files.length} songs in ${folder['path']}");
+      } catch (e) {
+        print("⚠️ Error scanning ${folder['path']}: $e");
+        continue;
+      }
     }
     result.sort((a, b) => fileName(a.path).toLowerCase().compareTo(fileName(b.path).toLowerCase()));
     if (!mounted) return;
@@ -131,6 +173,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _isScanning = false;
     });
     _filter(_search.text);
+    print("🎵 Total songs: ${_songs.length}");
   }
 
   bool _isAudio(String path) {
@@ -207,12 +250,15 @@ class _HomeScreenState extends State<HomeScreen> {
     _filter(_search.text);
   }
 
+  // ✅ FIX: Proper folder add with state refresh
   Future<void> _addFolder() async {
     try {
       final result = await FilePicker.platform.getDirectoryPath();
       if (result == null) return;
       final path = result;
+      print("📁 Selected folder: $path");
       
+      // Check if already exists
       if (_folders.any((f) => f['path'] == path)) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -222,6 +268,7 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
       
+      // Add folder
       setState(() {
         _folders.add({
           'name': path.split(Platform.pathSeparator).last,
@@ -231,14 +278,18 @@ class _HomeScreenState extends State<HomeScreen> {
       });
       
       await _save();
+      
+      // ✅ IMPORTANT: Scan and refresh UI
       await _scan();
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('✅ Added: ${path.split(Platform.pathSeparator).last}')),
+          SnackBar(content: Text('✅ Added: ${path.split(Platform.pathSeparator).last} (${_songs.length} songs)')),
         );
+        setState(() {}); // Force UI refresh
       }
     } catch (e) {
+      print("❌ Folder error: $e");
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
