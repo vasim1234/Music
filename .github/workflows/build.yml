@@ -33,12 +33,10 @@ jobs:
       - name: Fix Android SDK & Enable Desugaring
         run: |
           if [ -f "android/app/build.gradle.kts" ]; then
-            # For build.gradle.kts (new Flutter projects)
             sed -i 's/compileSdk = .*/compileSdk = 37/' android/app/build.gradle.kts
             sed -i 's/targetSdk = .*/targetSdk = 37/' android/app/build.gradle.kts
             sed -i 's/minSdk = .*/minSdk = 24/' android/app/build.gradle.kts
             
-            # Enable desugaring in build.gradle.kts
             cat << 'GRADLE_EOF' >> android/app/build.gradle.kts
           android {
               compileOptions {
@@ -52,19 +50,16 @@ jobs:
           }
           GRADLE_EOF
           else
-            # For build.gradle (older Flutter projects)
             sed -i 's/compileSdkVersion .*/compileSdkVersion 37/' android/app/build.gradle
             sed -i 's/targetSdkVersion .*/targetSdkVersion 37/' android/app/build.gradle
             sed -i 's/minSdkVersion .*/minSdkVersion 24/' android/app/build.gradle
-            
-            # Enable desugaring in build.gradle
             sed -i '/compileOptions {/a \        coreLibraryDesugaringEnabled true' android/app/build.gradle
             echo "dependencies { coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4' }" >> android/app/build.gradle
           fi
 
       - name: Add Dependencies
         run: |
-          flutter pub add audioplayers file_picker permission_handler shared_preferences flutter_local_notifications
+          flutter pub add audioplayers permission_handler shared_preferences flutter_local_notifications on_audio_query
           flutter pub get
 
       - name: Create Splash Screen
@@ -135,7 +130,7 @@ jobs:
           import 'dart:io';
           import 'package:flutter/material.dart';
           import 'package:audioplayers/audioplayers.dart';
-          import 'package:file_picker/file_picker.dart';
+          import 'package:on_audio_query/on_audio_query.dart';
           import 'package:permission_handler/permission_handler.dart';
           import 'package:shared_preferences/shared_preferences.dart';
 
@@ -147,10 +142,11 @@ jobs:
 
           class _HomeScreenState extends State<HomeScreen> {
             final AudioPlayer _player = AudioPlayer();
+            final OnAudioQuery _audioQuery = OnAudioQuery();
             final TextEditingController _search = TextEditingController();
-            final List<Map<String, dynamic>> _folders = [];
-            final List<File> _songs = [];
-            List<File> _visibleSongs = [];
+            
+            List<SongModel> _songs = [];
+            List<SongModel> _visibleSongs = [];
             List<String> _favorites = [];
             List<String> _recent = [];
             List<Map<String, dynamic>> _playlists = [];
@@ -158,6 +154,7 @@ jobs:
             String? _playlistDetail;
             int _currentIndex = -1;
             bool _playing = false;
+            bool _loading = true;
             Duration _duration = Duration.zero;
             Duration _position = Duration.zero;
             StreamSubscription? _stateSub, _durationSub, _positionSub, _completeSub;
@@ -176,12 +173,16 @@ jobs:
                 if (mounted) setState(() => _position = p);
               });
               _completeSub = _player.onPlayerComplete.listen((_) => _next());
-              _load();
+              _initApp();
             }
 
-            Future<void> _load() async {
+            Future<void> _initApp() async {
+              await _loadSavedData();
+              await _requestAndScan();
+            }
+
+            Future<void> _loadSavedData() async {
               final p = await SharedPreferences.getInstance();
-              final folders = p.getStringList('folders') ?? [];
               _favorites = p.getStringList('favorites') ?? [];
               _recent = p.getStringList('recent') ?? [];
               final playlistStrings = p.getStringList('playlists') ?? [];
@@ -194,71 +195,65 @@ jobs:
                   'songs': parts.length > 1 ? parts[1].split('|').where((e) => e.isNotEmpty).toList() : <String>[],
                 });
               }
-              _folders..clear()..addAll(folders.map((path) => ({
-                'name': path.split(Platform.pathSeparator).last,
-                'path': path,
-                'enabled': true,
-              })));
-              await _scan();
-              if (mounted) setState(() {});
             }
 
-            Future<void> _save() async {
+            Future<void> _saveData() async {
               final p = await SharedPreferences.getInstance();
-              await p.setStringList('folders', _folders.map((e) => e['path'] as String).toList());
               await p.setStringList('favorites', _favorites);
               await p.setStringList('recent', _recent);
               await p.setStringList('playlists', _playlists.map((e) => '${e['name']}|||${(e['songs'] as List<String>).join('|')}').toList());
             }
 
-            Future<void> _requestStorage() async {
-              if (!Platform.isAndroid) return;
-              try {
-                final sdkPermission = await Permission.audio.request();
-                if (!sdkPermission.isGranted) await Permission.storage.request();
-                final manage = await Permission.manageExternalStorage.status;
-                if (!manage.isGranted) await Permission.manageExternalStorage.request();
-              } catch (e) { print("Permission error: $e"); }
-              await _scan();
-            }
-
-            Future<void> _scan() async {
-              final result = <File>[];
-              for (final folder in _folders.where((e) => e['enabled'] == true)) {
-                final dir = Directory(folder['path'] as String);
-                if (!await dir.exists()) continue;
-                try {
-                  await for (final entity in dir.list(recursive: true, followLinks: false)) {
-                    if (entity is File && _isAudio(entity.path)) result.add(entity);
-                  }
-                } catch (_) {}
+            Future<void> _requestAndScan() async {
+              setState(() => _loading = true);
+              if (Platform.isAndroid) {
+                await Permission.storage.request();
+                await Permission.audio.request();
+                await Permission.manageExternalStorage.request();
               }
-              result.sort((a, b) => fileName(a.path).toLowerCase().compareTo(fileName(b.path).toLowerCase()));
-              if (!mounted) return;
-              setState(() { _songs..clear()..addAll(result); });
-              _filter(_search.text);
+              await _scanDeviceSongs();
             }
 
-            bool _isAudio(String path) {
-              final p = path.toLowerCase();
-              const exts = ['.mp3', '.m4a', '.aac', '.wav', '.ogg', '.flac', '.wma', '.opus'];
-              return exts.any(p.endsWith);
+            Future<void> _scanDeviceSongs() async {
+              try {
+                bool hasPermission = await _audioQuery.permissionsStatus();
+                if (!hasPermission) {
+                  hasPermission = await _audioQuery.permissionsRequest();
+                }
+
+                List<SongModel> queriedSongs = await _audioQuery.querySongs(
+                  sortType: SongSortType.TITLE,
+                  orderType: OrderType.ASC_OR_SMALLER,
+                  uriType: UriType.EXTERNAL,
+                  ignoreCase: true,
+                );
+
+                queriedSongs = queriedSongs.where((s) => (s.duration ?? 0) > 10000).toList();
+
+                if (mounted) {
+                  setState(() {
+                    _songs = queriedSongs;
+                    _loading = false;
+                  });
+                  _filter(_search.text);
+                }
+              } catch (e) {
+                if (mounted) setState(() => _loading = false);
+              }
             }
 
-            String fileName(String path) {
-              final name = path.split(Platform.pathSeparator).last;
-              return name.replaceFirst(RegExp(r'\.[^.]+$'), '').replaceAll(RegExp(r'\([^)]*\)'), '').replaceAll(RegExp(r'\[[^]]*\]'), '').replaceAll('_', ' ').replaceAll('-', ' ').trim();
-            }
-
-            List<File> _baseList() {
+            List<SongModel> _baseList() {
               switch (_view) {
-                case 'Favorites': return _songs.where((f) => _favorites.contains(f.path)).toList();
-                case 'Recent': return _recent.map(File.new).where((f) => f.existsSync()).toList();
+                case 'Favorites':
+                  return _songs.where((s) => _favorites.contains(s.data)).toList();
+                case 'Recent':
+                  return _recent.map((path) => _songs.firstWhere((s) => s.data == path, orElse: () => SongModel({'_id': -1, '_data': path, 'title': path.split('/').last}))).where((s) => s.id != -1).toList();
                 case 'PlaylistDetail':
                   final p = _playlists.firstWhere((e) => e['name'] == _playlistDetail, orElse: () => {'name': '', 'songs': <String>[]});
                   final paths = p['songs'] as List<String>;
-                  return _songs.where((f) => paths.contains(f.path)).toList();
-                default: return List<File>.from(_songs);
+                  return _songs.where((s) => paths.contains(s.data)).toList();
+                default:
+                  return List<SongModel>.from(_songs);
               }
             }
 
@@ -266,19 +261,19 @@ jobs:
               final base = _baseList();
               final q = query.trim().toLowerCase();
               setState(() {
-                _visibleSongs = q.isEmpty ? base : base.where((f) => fileName(f.path).toLowerCase().contains(q)).toList();
+                _visibleSongs = q.isEmpty ? base : base.where((s) => s.title.toLowerCase().contains(q) || s.artist.toString().toLowerCase().contains(q)).toList();
               });
             }
 
-            Future<void> _play(File file) async {
-              final index = _visibleSongs.indexWhere((f) => f.path == file.path);
+            Future<void> _play(SongModel song) async {
+              final index = _visibleSongs.indexWhere((s) => s.id == song.id);
               if (index < 0) return;
               setState(() => _currentIndex = index);
-              await _player.play(DeviceFileSource(file.path));
-              _recent.remove(file.path);
-              _recent.insert(0, file.path);
+              await _player.play(DeviceFileSource(song.data));
+              _recent.remove(song.data);
+              _recent.insert(0, song.data);
               if (_recent.length > 50) _recent.removeLast();
-              await _save();
+              await _saveData();
             }
 
             Future<void> _next() async {
@@ -309,32 +304,8 @@ jobs:
                 if (_favorites.contains(path)) _favorites.remove(path);
                 else _favorites.add(path);
               });
-              await _save();
+              await _saveData();
               _filter(_search.text);
-            }
-
-            Future<void> _addFolder() async {
-              await _requestStorage();
-              try {
-                final path = await FilePicker.getDirectoryPath();
-                if (path == null) return;
-                if (_folders.any((f) => f['path'] == path)) {
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Folder already added.')));
-                  return;
-                }
-                setState(() {
-                  _folders.add({
-                    'name': path.split(Platform.pathSeparator).last,
-                    'path': path,
-                    'enabled': true,
-                  });
-                });
-                await _save();
-                await _scan();
-              } catch (e) {
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Folder error: $e')));
-              }
             }
 
             Future<void> _createPlaylist() async {
@@ -359,11 +330,11 @@ jobs:
               setState(() {
                 _playlists.add({'name': name, 'songs': <String>[]});
               });
-              await _save();
+              await _saveData();
               _setView('Playlists');
             }
 
-            Future<void> _addToPlaylist(File song) async {
+            Future<void> _addToPlaylist(SongModel song) async {
               if (_playlists.isEmpty) {
                 await _createPlaylist();
                 if (_playlists.isEmpty) return;
@@ -380,8 +351,8 @@ jobs:
               );
               if (selected == null) return;
               final songs = _playlists[selected]['songs'] as List<String>;
-              if (!songs.contains(song.path)) songs.add(song.path);
-              await _save();
+              if (!songs.contains(song.data)) songs.add(song.data);
+              await _saveData();
               if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Added to playlist.')));
             }
 
@@ -399,6 +370,7 @@ jobs:
                 backgroundColor: Colors.transparent,
                 builder: (_) => StatefulBuilder(
                   builder: (context, setModal) {
+                    final song = _visibleSongs[_currentIndex];
                     return Container(
                       height: MediaQuery.sizeOf(context).height * .94,
                       decoration: const BoxDecoration(
@@ -443,19 +415,24 @@ jobs:
                                 colors: [Color(0xFF4C83FF), Color(0xFFD946EF)],
                               ),
                             ),
-                            child: const Icon(Icons.music_note, size: 120, color: Colors.white),
+                            child: QueryArtworkWidget(
+                              id: song.id,
+                              type: ArtworkType.AUDIO,
+                              artworkBorder: BorderRadius.circular(130),
+                              nullArtworkWidget: const Icon(Icons.music_note, size: 120, color: Colors.white),
+                            ),
                           ),
                           const SizedBox(height: 25),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 25),
                             child: Text(
-                              fileName(_visibleSongs[_currentIndex].path),
+                              song.title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(color: Colors.white, fontSize: 23, fontWeight: FontWeight.bold),
+                              style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
                             ),
                           ),
-                          const Text('Local Audio', style: TextStyle(color: Colors.white54)),
+                          Text(song.artist ?? '<Unknown Artist>', style: const TextStyle(color: Colors.white54)),
                           const Spacer(),
                           Slider(
                             value: _position.inMilliseconds.clamp(0, _duration.inMilliseconds).toDouble(),
@@ -483,11 +460,11 @@ jobs:
                               IconButton(
                                 iconSize: 30,
                                 onPressed: () async {
-                                  await _toggleFavorite(_visibleSongs[_currentIndex].path);
+                                  await _toggleFavorite(song.data);
                                   setModal(() {});
                                 },
                                 icon: Icon(
-                                  _favorites.contains(_visibleSongs[_currentIndex].path) ? Icons.favorite : Icons.favorite_border,
+                                  _favorites.contains(song.data) ? Icons.favorite : Icons.favorite_border,
                                   color: Colors.white,
                                 ),
                               ),
@@ -529,7 +506,7 @@ jobs:
                               ),
                               IconButton(
                                 iconSize: 28,
-                                onPressed: () => _addToPlaylist(_visibleSongs[_currentIndex]),
+                                onPressed: () => _addToPlaylist(song),
                                 icon: const Icon(Icons.playlist_add, color: Colors.white70),
                               ),
                             ],
@@ -544,6 +521,9 @@ jobs:
             }
 
             Widget _songList() {
+              if (_loading) {
+                return const Center(child: CircularProgressIndicator());
+              }
               if (_visibleSongs.isEmpty) {
                 return Center(
                   child: Column(
@@ -556,55 +536,65 @@ jobs:
                         style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 18),
-                      if (_view == 'Songs')
-                        FilledButton.icon(
-                          onPressed: _addFolder,
-                          icon: const Icon(Icons.folder_open),
-                          label: const Text('Add Music Folder'),
-                        ),
+                      FilledButton.icon(
+                        onPressed: _requestAndScan,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Scan Device Music'),
+                      ),
                     ],
                   ),
                 );
               }
-              return ListView.builder(
-                itemCount: _visibleSongs.length,
-                itemBuilder: (context, index) {
-                  final song = _visibleSongs[index];
-                  final current = index == _currentIndex && _playing;
-                  return ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: current ? Colors.deepPurple : Colors.grey.shade200,
-                      child: Icon(Icons.music_note, color: current ? Colors.white : Colors.grey),
-                    ),
-                    title: Text(
-                      fileName(song.path),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontWeight: current ? FontWeight.bold : FontWeight.w500,
-                        color: current ? Colors.deepPurple : Colors.black87,
+              return RefreshIndicator(
+                onRefresh: _requestAndScan,
+                child: ListView.builder(
+                  itemCount: _visibleSongs.length,
+                  itemBuilder: (context, index) {
+                    final song = _visibleSongs[index];
+                    final current = index == _currentIndex && _playing;
+                    return ListTile(
+                      leading: QueryArtworkWidget(
+                        id: song.id,
+                        type: ArtworkType.AUDIO,
+                        nullArtworkWidget: CircleAvatar(
+                          backgroundColor: current ? Colors.deepPurple : Colors.grey.shade200,
+                          child: Icon(Icons.music_note, color: current ? Colors.white : Colors.grey),
+                        ),
                       ),
-                    ),
-                    subtitle: const Text('Local Audio'),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          onPressed: () => _toggleFavorite(song.path),
-                          icon: Icon(
-                            _favorites.contains(song.path) ? Icons.favorite : Icons.favorite_border,
-                            color: _favorites.contains(song.path) ? Colors.deepPurpleAccent : Colors.grey,
+                      title: Text(
+                        song.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: current ? FontWeight.bold : FontWeight.w500,
+                          color: current ? Colors.deepPurple : Colors.black87,
+                        ),
+                      ),
+                      subtitle: Text(
+                        song.artist ?? '<Unknown>',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            onPressed: () => _toggleFavorite(song.data),
+                            icon: Icon(
+                              _favorites.contains(song.data) ? Icons.favorite : Icons.favorite_border,
+                              color: _favorites.contains(song.data) ? Colors.deepPurpleAccent : Colors.grey,
+                            ),
                           ),
-                        ),
-                        IconButton(
-                          onPressed: () => _addToPlaylist(song),
-                          icon: const Icon(Icons.playlist_add, color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                    onTap: () => _play(song),
-                  );
-                },
+                          IconButton(
+                            onPressed: () => _addToPlaylist(song),
+                            icon: const Icon(Icons.playlist_add, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                      onTap: () => _play(song),
+                    );
+                  },
+                ),
               );
             }
 
@@ -633,7 +623,7 @@ jobs:
                         icon: const Icon(Icons.delete_outline, color: Colors.red),
                         onPressed: () async {
                           setState(() => _playlists.removeAt(i));
-                          await _save();
+                          await _saveData();
                         },
                       ),
                       onTap: () {
@@ -693,7 +683,7 @@ jobs:
             }
 
             Widget _miniPlayer() {
-              final title = fileName(_visibleSongs[_currentIndex].path);
+              final song = _visibleSongs[_currentIndex];
               return Material(
                 color: Colors.transparent,
                 child: InkWell(
@@ -709,13 +699,17 @@ jobs:
                     ),
                     child: Row(
                       children: [
-                        const CircleAvatar(
-                          backgroundColor: Colors.black87,
-                          child: Icon(Icons.music_note, color: Colors.white),
+                        QueryArtworkWidget(
+                          id: song.id,
+                          type: ArtworkType.AUDIO,
+                          nullArtworkWidget: const CircleAvatar(
+                            backgroundColor: Colors.black87,
+                            child: Icon(Icons.music_note, color: Colors.white),
+                          ),
                         ),
                         const SizedBox(width: 10),
                         Expanded(
-                          child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                          child: Text(song.title, maxLines: 1, overflow: TextOverflow.ellipsis),
                         ),
                         IconButton(
                           onPressed: () => _playing ? _player.pause() : _player.resume(),
@@ -764,24 +758,16 @@ jobs:
                               Icon(Icons.headphones, color: Colors.white, size: 45),
                               SizedBox(height: 12),
                               Text('Bhai Bhai App', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-                              Text('Local Music Player', style: TextStyle(color: Colors.white70)),
+                              Text('Local Audio Player', style: TextStyle(color: Colors.white70)),
                             ],
                           ),
-                        ),
-                        ListTile(
-                          leading: const Icon(Icons.folder, color: Colors.deepPurple),
-                          title: const Text('Choose Folders', style: TextStyle(fontWeight: FontWeight.w600)),
-                          onTap: () {
-                            Navigator.pop(context);
-                            _addFolder();
-                          },
                         ),
                         ListTile(
                           leading: const Icon(Icons.refresh, color: Colors.blueAccent),
                           title: const Text('Scan Music', style: TextStyle(fontWeight: FontWeight.w600)),
                           onTap: () {
                             Navigator.pop(context);
-                            _scan();
+                            _requestAndScan();
                           },
                         ),
                         const Divider(),
@@ -804,57 +790,6 @@ jobs:
                               const SnackBar(content: Text('Visualizer feature coming soon! 📊')),
                             );
                           },
-                        ),
-                        ListTile(
-                          leading: const Icon(Icons.audiotrack, color: Colors.teal),
-                          title: const Text('Audio Effects', style: TextStyle(fontWeight: FontWeight.w600)),
-                          onTap: () {
-                            Navigator.pop(context);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Audio Effects coming soon! 🎚️')),
-                            );
-                          },
-                        ),
-                        ListTile(
-                          leading: const Icon(Icons.radio, color: Colors.blue),
-                          title: const Text('FM Radio', style: TextStyle(fontWeight: FontWeight.w600)),
-                          onTap: () {
-                            Navigator.pop(context);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('FM Radio coming soon! 📻')),
-                            );
-                          },
-                        ),
-                        ListTile(
-                          leading: const Icon(Icons.timer, color: Colors.orange),
-                          title: const Text('Sleep Timer', style: TextStyle(fontWeight: FontWeight.w600)),
-                          onTap: () {
-                            Navigator.pop(context);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Sleep Timer coming soon! ⏰')),
-                            );
-                          },
-                        ),
-                        ListTile(
-                          leading: const Icon(Icons.palette, color: Colors.pink),
-                          title: const Text('Themes', style: TextStyle(fontWeight: FontWeight.w600)),
-                          onTap: () {
-                            Navigator.pop(context);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Themes coming soon! 🎨')),
-                            );
-                          },
-                        ),
-                        const Divider(),
-                        ListTile(
-                          leading: const Icon(Icons.settings, color: Colors.grey),
-                          title: const Text('Settings'),
-                          onTap: () {},
-                        ),
-                        ListTile(
-                          leading: const Icon(Icons.share, color: Colors.green),
-                          title: const Text('Share App'),
-                          onTap: () {},
                         ),
                       ],
                     ),
