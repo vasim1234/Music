@@ -29,6 +29,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Duration _position = Duration.zero;
   StreamSubscription? _stateSub, _durationSub, _positionSub, _completeSub;
   bool _hasPermission = false;
+  bool _isScanning = false;
 
   @override
   void initState() {
@@ -49,18 +50,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _checkPermissionAndLoad() async {
     if (Platform.isAndroid) {
-      // For Android 11+ (API 30+), we need MANAGE_EXTERNAL_STORAGE
       final status = await Permission.manageExternalStorage.status;
       final audioStatus = await Permission.audio.status;
       
       if (!status.isGranted) {
-        // Request permission
         final result = await Permission.manageExternalStorage.request();
         if (result.isGranted) {
           setState(() => _hasPermission = true);
           _load();
         } else {
-          // If denied, show dialog to go to settings
           _showPermissionDialog();
         }
       } else {
@@ -131,20 +129,87 @@ class _HomeScreenState extends State<HomeScreen> {
     await p.setStringList('playlists', _playlists.map((e) => '${e['name']}|||${(e['songs'] as List<String>).join('|')}').toList());
   }
 
+  // ✅ FIX: Safe recursive scanning with error handling
+  Future<List<File>> _scanDirectorySafe(Directory dir) async {
+    final List<File> foundFiles = [];
+    try {
+      final List<FileSystemEntity> entities = await dir.list().toList();
+      
+      for (final entity in entities) {
+        try {
+          if (entity is File) {
+            final String path = entity.path.toLowerCase();
+            if (_isAudio(path)) {
+              foundFiles.add(entity);
+            }
+          } else if (entity is Directory) {
+            // Skip hidden directories
+            final String dirName = entity.path.split(Platform.pathSeparator).last;
+            if (dirName.startsWith('.')) continue;
+            
+            // Recursively scan subdirectories with error handling
+            try {
+              final subFiles = await _scanDirectorySafe(entity);
+              foundFiles.addAll(subFiles);
+            } catch (e) {
+              // Skip this subdirectory if error occurs
+              print("⚠️ Error scanning ${entity.path}: $e");
+              continue;
+            }
+          }
+        } catch (e) {
+          // Skip individual file/dir if error occurs
+          print("⚠️ Error processing ${entity.path}: $e");
+          continue;
+        }
+      }
+    } catch (e) {
+      print("⚠️ Error scanning directory: $e");
+    }
+    return foundFiles;
+  }
+
   Future<void> _scan() async {
+    if (_isScanning) return;
+    
+    setState(() {
+      _isScanning = true;
+      _songs.clear();
+      _visibleSongs.clear();
+    });
+
     final result = <File>[];
+    int folderCount = 0;
+    
     for (final folder in _folders.where((e) => e['enabled'] == true)) {
       final dir = Directory(folder['path'] as String);
-      if (!await dir.exists()) continue;
+      if (!await dir.exists()) {
+        print("⚠️ Directory not exists: ${folder['path']}");
+        continue;
+      }
+      
+      folderCount++;
+      print("📁 Scanning: ${folder['path']} ($folderCount/${_folders.length})");
+      
       try {
-        await for (final entity in dir.list(recursive: true, followLinks: false)) {
-          if (entity is File && _isAudio(entity.path)) result.add(entity);
-        }
-      } catch (_) {}
+        final files = await _scanDirectorySafe(dir);
+        result.addAll(files);
+        print("✅ Found ${files.length} songs in ${folder['path']}");
+      } catch (e) {
+        print("⚠️ Error scanning folder ${folder['path']}: $e");
+        continue;
+      }
     }
+    
     result.sort((a, b) => fileName(a.path).toLowerCase().compareTo(fileName(b.path).toLowerCase()));
+    
+    print("🎵 Total songs found: ${result.length}");
+    
     if (!mounted) return;
-    setState(() { _songs..clear()..addAll(result); });
+    setState(() {
+      _songs..clear()..addAll(result);
+      _isScanning = false;
+    });
     _filter(_search.text);
   }
 
@@ -223,7 +288,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _addFolder() async {
-    // Check permission first
     if (!_hasPermission) {
       await _checkPermissionAndLoad();
       if (!_hasPermission) return;
@@ -472,6 +536,19 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _songList() {
+    if (_isScanning) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(color: Colors.deepPurple),
+            SizedBox(height: 16),
+            Text('Scanning music files...', style: TextStyle(color: Colors.grey)),
+          ],
+        ),
+      );
+    }
+    
     if (!_hasPermission) {
       return Center(
         child: Column(
