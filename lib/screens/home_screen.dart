@@ -28,6 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
   StreamSubscription? _stateSub, _durationSub, _positionSub, _completeSub;
+  bool _hasPermission = false;
 
   @override
   void initState() {
@@ -43,7 +44,59 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) setState(() => _position = p);
     });
     _completeSub = _player.onPlayerComplete.listen((_) => _next());
-    _load();
+    _checkPermissionAndLoad();
+  }
+
+  Future<void> _checkPermissionAndLoad() async {
+    if (Platform.isAndroid) {
+      // For Android 11+ (API 30+), we need MANAGE_EXTERNAL_STORAGE
+      final status = await Permission.manageExternalStorage.status;
+      final audioStatus = await Permission.audio.status;
+      
+      if (!status.isGranted) {
+        // Request permission
+        final result = await Permission.manageExternalStorage.request();
+        if (result.isGranted) {
+          setState(() => _hasPermission = true);
+          _load();
+        } else {
+          // If denied, show dialog to go to settings
+          _showPermissionDialog();
+        }
+      } else {
+        setState(() => _hasPermission = true);
+        _load();
+      }
+    } else {
+      _load();
+    }
+  }
+
+  void _showPermissionDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('⚠️ Permission Required'),
+        content: const Text(
+          'App needs storage permission to access your music files.\n\n'
+          'Please go to Settings and enable "Allow management of all files" for this app.'
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              openAppSettings();
+            },
+            child: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _load() async {
@@ -78,43 +131,17 @@ class _HomeScreenState extends State<HomeScreen> {
     await p.setStringList('playlists', _playlists.map((e) => '${e['name']}|||${(e['songs'] as List<String>).join('|')}').toList());
   }
 
-  Future<void> _requestStorage() async {
-    if (!Platform.isAndroid) return;
-    try {
-      // Request all required permissions
-      final status = await Permission.storage.request();
-      final manageStatus = await Permission.manageExternalStorage.request();
-      final audioStatus = await Permission.audio.request();
-      
-      print("Storage: ${status.isGranted}");
-      print("Manage: ${manageStatus.isGranted}");
-      print("Audio: ${audioStatus.isGranted}");
-      
-    } catch (e) { print("Permission error: $e"); }
-    await _scan();
-  }
-
   Future<void> _scan() async {
     final result = <File>[];
     for (final folder in _folders.where((e) => e['enabled'] == true)) {
       final dir = Directory(folder['path'] as String);
-      print("Scanning: ${folder['path']}");
-      if (!await dir.exists()) {
-        print("Directory not exists: ${folder['path']}");
-        continue;
-      }
+      if (!await dir.exists()) continue;
       try {
         await for (final entity in dir.list(recursive: true, followLinks: false)) {
-          if (entity is File && _isAudio(entity.path)) {
-            result.add(entity);
-            print("Found: ${entity.path}");
-          }
+          if (entity is File && _isAudio(entity.path)) result.add(entity);
         }
-      } catch (e) {
-        print("Error scanning: $e");
-      }
+      } catch (_) {}
     }
-    print("Total songs found: ${result.length}");
     result.sort((a, b) => fileName(a.path).toLowerCase().compareTo(fileName(b.path).toLowerCase()));
     if (!mounted) return;
     setState(() { _songs..clear()..addAll(result); });
@@ -196,18 +223,17 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _addFolder() async {
-    await _requestStorage();
+    // Check permission first
+    if (!_hasPermission) {
+      await _checkPermissionAndLoad();
+      if (!_hasPermission) return;
+    }
+    
     try {
-      // Use FilePicker.getDirectoryPath() with proper null check
       final result = await FilePicker.platform.getDirectoryPath();
-      if (result == null) {
-        print("User cancelled folder selection");
-        return;
-      }
+      if (result == null) return;
       final path = result;
-      print("Selected folder: $path");
       
-      // Check if folder already exists
       if (_folders.any((f) => f['path'] == path)) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -230,13 +256,12 @@ class _HomeScreenState extends State<HomeScreen> {
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Added folder: ${path.split(Platform.pathSeparator).last}')),
+          SnackBar(content: Text('✅ Added: ${path.split(Platform.pathSeparator).last}')),
         );
       }
     } catch (e) {
-      print("Folder error: $e");
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Folder error: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 
@@ -447,6 +472,27 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _songList() {
+    if (!_hasPermission) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.lock, size: 64, color: Colors.orange),
+            const SizedBox(height: 12),
+            const Text('Storage Permission Required', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 8),
+            const Text('Please allow storage permission to access your music.', textAlign: TextAlign.center),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: _checkPermissionAndLoad,
+              icon: const Icon(Icons.settings),
+              label: const Text('Grant Permission'),
+            ),
+          ],
+        ),
+      );
+    }
+    
     if (_visibleSongs.isEmpty) {
       return Center(
         child: Column(
@@ -460,10 +506,16 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 18),
             if (_view == 'Songs')
-              FilledButton.icon(
-                onPressed: _addFolder,
-                icon: const Icon(Icons.folder_open),
-                label: const Text('Add Music Folder'),
+              Column(
+                children: [
+                  const Text('Add a music folder to get started.', style: TextStyle(color: Colors.grey)),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: _addFolder,
+                    icon: const Icon(Icons.folder_open),
+                    label: const Text('Add Music Folder'),
+                  ),
+                ],
               ),
           ],
         ),
