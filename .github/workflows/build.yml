@@ -30,16 +30,38 @@ jobs:
           flutter create . --platforms=android --project-name=music
           flutter clean
 
-      - name: Fix Android SDK & Enable Desugaring
+      - name: Fix Android SDK & Enable Core Library Desugaring
         run: |
+          # For build.gradle.kts (new Flutter projects)
           if [ -f "android/app/build.gradle.kts" ]; then
+            # Fix SDK versions
             sed -i 's/compileSdk = .*/compileSdk = 37/' android/app/build.gradle.kts
             sed -i 's/targetSdk = .*/targetSdk = 37/' android/app/build.gradle.kts
             sed -i 's/minSdk = .*/minSdk = 24/' android/app/build.gradle.kts
+            
+            # Enable Core Library Desugaring in build.gradle.kts
+            cat << 'GRADLE_EOF' >> android/app/build.gradle.kts
+          android {
+              compileOptions {
+                  isCoreLibraryDesugaringEnabled = true
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+          }
+          dependencies {
+              coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+          }
+          GRADLE_EOF
           else
+            # For build.gradle (older Flutter projects)
+            # Fix SDK versions
             sed -i 's/compileSdkVersion .*/compileSdkVersion 37/' android/app/build.gradle
             sed -i 's/targetSdkVersion .*/targetSdkVersion 37/' android/app/build.gradle
             sed -i 's/minSdkVersion .*/minSdkVersion 24/' android/app/build.gradle
+            
+            # Enable Core Library Desugaring in build.gradle
+            sed -i '/compileOptions {/a \        coreLibraryDesugaringEnabled true' android/app/build.gradle
+            echo "dependencies { coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4' }" >> android/app/build.gradle
           fi
 
       - name: Add Dependencies (with specific versions)
@@ -53,7 +75,6 @@ jobs:
 
       - name: Fix Namespace for All Packages (Smart - Check First)
         run: |
-          # Function to add namespace only if missing
           add_namespace_if_missing() {
             local file=$1
             local namespace=$2
@@ -67,7 +88,6 @@ jobs:
             fi
           }
 
-          # Fix each package only if namespace missing
           for pkg in audioplayers_android permission_handler_android file_picker shared_preferences_android flutter_local_notifications; do
             find ~/.pub-cache/hosted/pub.dev/$pkg-* -name "build.gradle" 2>/dev/null | while read -r file; do
               case $pkg in
@@ -90,7 +110,6 @@ jobs:
             done
           done
           
-          # Fix main app namespace
           if [ -f "android/app/build.gradle" ]; then
             if ! grep -q "namespace" android/app/build.gradle; then
               sed -i '/android {/a \    namespace "com.example.music"' android/app/build.gradle
