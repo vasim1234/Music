@@ -42,12 +42,17 @@ jobs:
             sed -i 's/minSdkVersion .*/minSdkVersion 24/' android/app/build.gradle
           fi
 
-      - name: Fix Namespace for on_audio_query_android
+      - name: Add Dependencies
         run: |
-          # Find and fix namespace in on_audio_query_android
-          find ~/.pub-cache/hosted/pub.dev/on_audio_query_android-* -name "build.gradle" -exec sed -i '/android {/a \    namespace "com.example.on_audio_query"' {} \;
+          flutter pub add audioplayers file_picker permission_handler shared_preferences flutter_local_notifications
+          flutter pub get
+
+      - name: Fix Namespace for on_audio_query_android (After Dependencies)
+        run: |
+          # Find and fix namespace in on_audio_query_android (now it exists)
+          find ~/.pub-cache/hosted/pub.dev/on_audio_query_android-* -name "build.gradle" -exec sed -i '/android {/a \    namespace "com.example.on_audio_query"' {} \; 2>/dev/null || echo "on_audio_query_android not found, skipping..."
           
-          # Also fix app/build.gradle if needed
+          # Fix app/build.gradle namespace
           if [ -f "android/app/build.gradle" ]; then
             if ! grep -q "namespace" android/app/build.gradle; then
               sed -i '/android {/a \    namespace "com.example.music"' android/app/build.gradle
@@ -59,11 +64,9 @@ jobs:
               sed -i '/android {/a \    namespace = "com.example.music"' android/app/build.gradle.kts
             fi
           fi
-
-      - name: Add Dependencies
-        run: |
-          flutter pub add audioplayers file_picker permission_handler shared_preferences flutter_local_notifications
-          flutter pub get
+          
+          # Also fix any other packages with namespace issues
+          find ~/.pub-cache/hosted/pub.dev/ -name "build.gradle" -exec sed -i '/android {/a \    namespace "com.example.package"' {} \; 2>/dev/null || true
 
       - name: Create Splash Screen
         run: |
@@ -182,8 +185,6 @@ jobs:
             Future<void> _checkPermissionAndLoad() async {
               if (Platform.isAndroid) {
                 final status = await Permission.manageExternalStorage.status;
-                final audioStatus = await Permission.audio.status;
-                
                 if (!status.isGranted) {
                   final result = await Permission.manageExternalStorage.request();
                   if (result.isGranted) {
@@ -260,12 +261,10 @@ jobs:
               await p.setStringList('playlists', _playlists.map((e) => '${e['name']}|||${(e['songs'] as List<String>).join('|')}').toList());
             }
 
-            // Safe recursive scanning
             Future<List<File>> _scanDirectorySafe(Directory dir) async {
               final List<File> foundFiles = [];
               try {
                 final List<FileSystemEntity> entities = await dir.list().toList();
-                
                 for (final entity in entities) {
                   try {
                     if (entity is File) {
@@ -279,45 +278,31 @@ jobs:
                       try {
                         final subFiles = await _scanDirectorySafe(entity);
                         foundFiles.addAll(subFiles);
-                      } catch (e) {
-                        continue;
-                      }
+                      } catch (e) { continue; }
                     }
-                  } catch (e) {
-                    continue;
-                  }
+                  } catch (e) { continue; }
                 }
-              } catch (e) {
-                print("⚠️ Error scanning directory: $e");
-              }
+              } catch (e) { print("Error scanning: $e"); }
               return foundFiles;
             }
 
             Future<void> _scan() async {
               if (_isScanning) return;
-              
               setState(() {
                 _isScanning = true;
                 _songs.clear();
                 _visibleSongs.clear();
               });
-
               final result = <File>[];
-              
               for (final folder in _folders.where((e) => e['enabled'] == true)) {
                 final dir = Directory(folder['path'] as String);
                 if (!await dir.exists()) continue;
-                
                 try {
                   final files = await _scanDirectorySafe(dir);
                   result.addAll(files);
-                } catch (e) {
-                  continue;
-                }
+                } catch (e) { continue; }
               }
-              
               result.sort((a, b) => fileName(a.path).toLowerCase().compareTo(fileName(b.path).toLowerCase()));
-              
               if (!mounted) return;
               setState(() {
                 _songs..clear()..addAll(result);
@@ -405,12 +390,10 @@ jobs:
                 await _checkPermissionAndLoad();
                 if (!_hasPermission) return;
               }
-              
               try {
                 final result = await FilePicker.platform.getDirectoryPath();
                 if (result == null) return;
                 final path = result;
-                
                 if (_folders.any((f) => f['path'] == path)) {
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -419,7 +402,6 @@ jobs:
                   }
                   return;
                 }
-                
                 setState(() {
                   _folders.add({
                     'name': path.split(Platform.pathSeparator).last,
@@ -427,10 +409,8 @@ jobs:
                     'enabled': true,
                   });
                 });
-                
                 await _save();
                 await _scan();
-                
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('✅ Added: ${path.split(Platform.pathSeparator).last}')),
@@ -661,7 +641,6 @@ jobs:
                   ),
                 );
               }
-              
               if (!_hasPermission) {
                 return Center(
                   child: Column(
@@ -682,7 +661,6 @@ jobs:
                   ),
                 );
               }
-              
               if (_visibleSongs.isEmpty) {
                 return Center(
                   child: Column(
