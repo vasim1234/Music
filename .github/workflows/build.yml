@@ -28,8 +28,23 @@ jobs:
           rm -rf android
           flutter create . --platforms=android --project-name=music
           flutter clean
-      
-      - name: Fix Android SDK & Add Desugaring (App Level)
+
+      - name: Inject Global Subproject Gradle Fix
+        run: |
+          cat << 'EOF' >> android/build.gradle
+
+          subprojects {
+              afterEvaluate { project ->
+                  if (project.hasProperty('android')) {
+                      project.android {
+                          compileSdkVersion 36
+                      }
+                  }
+              }
+          }
+          EOF
+
+      - name: Fix App Level SDK & Add Desugaring
         run: |
           if [ -f "android/app/build.gradle" ]; then
             sed -i 's/compileSdkVersion .*/compileSdkVersion 36/g' android/app/build.gradle
@@ -45,20 +60,7 @@ jobs:
             echo 'dependencies { coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4") }' >> android/app/build.gradle.kts
           fi
 
-      - name: Add Namespace
-        run: |
-          if [ -f "android/app/build.gradle" ]; then
-            if ! grep -q "namespace" android/app/build.gradle; then
-              sed -i '/android {/a \    namespace "com.example.music"' android/app/build.gradle
-            fi
-          fi
-          if [ -f "android/app/build.gradle.kts" ]; then
-            if ! grep -q "namespace" android/app/build.gradle.kts; then
-              sed -i '/android {/a \    namespace = "com.example.music"' android/app/build.gradle.kts
-            fi
-          fi
-
-      - name: Install Dependencies (First - So Packages Download)
+      - name: Install Dependencies
         run: |
           flutter pub add audioplayers:^6.0.0
           flutter pub add file_picker:^8.0.0
@@ -67,25 +69,6 @@ jobs:
           flutter pub add flutter_local_notifications:^17.1.2
           flutter pub get
 
-      - name: Force All Plugins to SDK 36 (After Packages Downloaded)
-        run: |
-          # Now plugins are downloaded, force them to SDK 36
-          find ~/.pub-cache/hosted/pub.dev/ -name "build.gradle" 2>/dev/null | while read -r file; do
-            sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 36/g' "$file" 2>/dev/null || true
-            sed -i 's/compileSdk = [0-9]*/compileSdk = 36/g' "$file" 2>/dev/null || true
-            sed -i 's/targetSdkVersion [0-9]*/targetSdkVersion 36/g' "$file" 2>/dev/null || true
-            sed -i 's/targetSdk = [0-9]*/targetSdk = 36/g' "$file" 2>/dev/null || true
-            sed -i 's/minSdkVersion [0-9]*/minSdkVersion 24/g' "$file" 2>/dev/null || true
-            sed -i 's/minSdk = [0-9]*/minSdk = 24/g' "$file" 2>/dev/null || true
-          done
-          
-          # Specifically fix file_picker
-          find ~/.pub-cache/hosted/pub.dev/file_picker-* -name "build.gradle" 2>/dev/null | while read -r file; do
-            sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 36/g' "$file" 2>/dev/null || true
-            sed -i 's/compileSdk = [0-9]*/compileSdk = 36/g' "$file" 2>/dev/null || true
-            echo "✅ Fixed file_picker SDK to 36"
-          done
-      
       - name: Build APK
         run: flutter build apk --debug
       
