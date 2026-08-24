@@ -1,10 +1,11 @@
-import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/notification_service.dart';
+import 'equalizer_screen.dart'; 
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -12,430 +13,401 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final AudioPlayer _player = AudioPlayer();
-  final TextEditingController _search = TextEditingController();
-  final List<Map<String, dynamic>> _folders = [];
-  final List<File> _songs = [];
-  List<File> _visibleSongs = [];
-  List<String> _favorites = [];
-  List<String> _recent = [];
-  List<Map<String, dynamic>> _playlists = [];
-  String _view = 'Songs';
-  String? _playlistDetail;
+  final TextEditingController _searchController = TextEditingController();
+  
+  List<Map<String, dynamic>> _savedFolders = [];
+  List<File> _playlist = []; 
+  List<File> _filteredPlaylist = []; 
+  List<String> _favorites = []; 
+  List<String> _recentSongs = [];
+  List<Map<String, dynamic>> _customPlaylists = [];
+  String _selectedPlaylist = '';
+  
   int _currentIndex = -1;
-  bool _playing = false;
+  bool isPlaying = false;
+  bool _hasPermission = false;
+  bool is3DOn = false;
+  String _currentView = 'Songs';
+
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
-  StreamSubscription? _stateSub, _durationSub, _positionSub, _completeSub;
-  bool _isScanning = false;
-  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _stateSub = _player.onPlayerStateChanged.listen((s) {
-      if (!mounted) return;
-      setState(() => _playing = s == PlayerState.playing);
-    });
-    _durationSub = _player.onDurationChanged.listen((d) {
-      if (mounted) setState(() => _duration = d);
-    });
-    _positionSub = _player.onPositionChanged.listen((p) {
-      if (mounted) setState(() => _position = p);
-    });
-    _completeSub = _player.onPlayerComplete.listen((_) => _next());
-    _requestPermissionsAndLoad();
-  }
-
-  Future<void> _requestPermissionsAndLoad() async {
-    if (Platform.isAndroid) {
-      await [
-        Permission.storage,
-        Permission.audio,
-        Permission.manageExternalStorage,
-      ].request();
-    }
-    await _load();
-  }
-
-  Future<void> _load() async {
-    final p = await SharedPreferences.getInstance();
-    final folders = p.getStringList('folders') ?? [];
-    _favorites = p.getStringList('favorites') ?? [];
-    _recent = p.getStringList('recent') ?? [];
-    final playlistStrings = p.getStringList('playlists') ?? [];
-    _playlists = [];
-    for (final item in playlistStrings) {
-      final parts = item.split('|||');
-      if (parts.isEmpty) continue;
-      _playlists.add({
-        'name': parts.first,
-        'songs': parts.length > 1 ? parts[1].split('|').where((e) => e.isNotEmpty).toList() : <String>[],
-      });
-    }
-    _folders..clear()..addAll(folders.map((path) => ({
-      'name': path.split(Platform.pathSeparator).last,
-      'path': path,
-      'enabled': true,
-    })));
-    await _scan();
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  Future<void> _save() async {
-    final p = await SharedPreferences.getInstance();
-    await p.setStringList('folders', _folders.map((e) => e['path'] as String).toList());
-    await p.setStringList('favorites', _favorites);
-    await p.setStringList('recent', _recent);
-    await p.setStringList('playlists', _playlists.map((e) => '${e['name']}|||${(e['songs'] as List<String>).join('|')}').toList());
-  }
-
-  Future<List<File>> _scanDirectorySafe(Directory dir) async {
-    final List<File> foundFiles = [];
-    try {
-      if (!await dir.exists()) return foundFiles;
-      final List<FileSystemEntity> entities = dir.listSync(recursive: true, followLinks: false);
-      for (final entity in entities) {
-        if (entity is File && _isAudio(entity.path)) {
-          foundFiles.add(entity);
-        }
-      }
-    } catch (e) {
-      print("Error scanning: $e");
-    }
-    return foundFiles;
-  }
-
-  Future<void> _scan() async {
-    if (_isScanning) return;
-    setState(() {
-      _isScanning = true;
-    });
-    final result = <File>[];
-    for (final folder in _folders.where((e) => e['enabled'] == true)) {
-      final dir = Directory(folder['path'] as String);
-      final files = await _scanDirectorySafe(dir);
-      result.addAll(files);
-    }
-    result.sort((a, b) => fileName(a.path).toLowerCase().compareTo(fileName(b.path).toLowerCase()));
+    WidgetsBinding.instance.addObserver(this);
     
-    if (!mounted) return;
-    setState(() {
-      _songs..clear()..addAll(result);
-      _isScanning = false;
+    _player.onDurationChanged.listen((d) => setState(() => _duration = d));
+    _player.onPositionChanged.listen((p) => setState(() => _position = p));
+    _player.onPlayerStateChanged.listen((state) {
+      setState(() => isPlaying = state == PlayerState.playing);
+      _updateLockScreenControls();
     });
-    _filter(_search.text);
+    _player.onPlayerComplete.listen((event) => playNext());
+    
+    _loadData();
+    _checkPermission();
   }
 
-  bool _isAudio(String path) {
-    final p = path.toLowerCase();
-    const exts = ['.mp3', '.m4a', '.aac', '.wav', '.ogg', '.flac', '.wma', '.opus'];
-    return exts.any(p.endsWith);
-  }
-
-  String fileName(String path) {
-    final name = path.split(Platform.pathSeparator).last;
-    return name.replaceFirst(RegExp(r'\.[^.]+$'), '').replaceAll(RegExp(r'\([^)]*\)'), '').replaceAll(RegExp(r'\[[^]]*\]'), '').replaceAll('_', ' ').replaceAll('-', ' ').trim();
-  }
-
-  List<File> _baseList() {
-    switch (_view) {
-      case 'Favorites': return _songs.where((f) => _favorites.contains(f.path)).toList();
-      case 'Recent': return _recent.map(File.new).where((f) => f.existsSync()).toList();
-      case 'PlaylistDetail':
-        final p = _playlists.firstWhere((e) => e['name'] == _playlistDetail, orElse: () => {'name': '', 'songs': <String>[]});
-        final paths = p['songs'] as List<String>;
-        return _songs.where((f) => paths.contains(f.path)).toList();
-      default: return List<File>.from(_songs);
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _updateLockScreenControls();
     }
   }
 
-  void _filter(String query) {
-    final base = _baseList();
-    final q = query.trim().toLowerCase();
-    setState(() {
-      _visibleSongs = q.isEmpty ? base : base.where((f) => fileName(f.path).toLowerCase().contains(q)).toList();
-    });
-  }
-
-  Future<void> _play(File file) async {
-    final index = _visibleSongs.indexWhere((f) => f.path == file.path);
-    if (index < 0) return;
-    setState(() => _currentIndex = index);
-    await _player.play(DeviceFileSource(file.path));
-    _recent.remove(file.path);
-    _recent.insert(0, file.path);
-    if (_recent.length > 50) _recent.removeLast();
-    await _save();
-  }
-
-  Future<void> _next() async {
-    if (_visibleSongs.isEmpty) return;
-    final next = _currentIndex + 1;
-    if (next >= _visibleSongs.length) return;
-    await _play(_visibleSongs[next]);
-  }
-
-  Future<void> _previous() async {
-    if (_visibleSongs.isEmpty) return;
-    final prev = _currentIndex - 1;
-    if (prev < 0) return;
-    await _play(_visibleSongs[prev]);
-  }
-
-  void _setView(String view) {
-    setState(() {
-      _view = view;
-      if (view != 'PlaylistDetail') _playlistDetail = null;
-      _search.clear();
-    });
-    _filter('');
-  }
-
-  Future<void> _toggleFavorite(String path) async {
-    setState(() {
-      if (_favorites.contains(path)) _favorites.remove(path);
-      else _favorites.add(path);
-    });
-    await _save();
-    _filter(_search.text);
-  }
-
-  Future<void> _addFolder() async {
-    try {
-      final status = await Permission.audio.request();
-      if (!status.isGranted) {
-        await Permission.storage.request();
-      }
-
-      final result = await FilePicker.platform.getDirectoryPath();
-      if (result == null) return;
-      final path = result;
-
-      if (!_folders.any((f) => f['path'] == path)) {
-        _folders.add({
-          'name': path.split(Platform.pathSeparator).last,
-          'path': path,
-          'enabled': true,
-        });
-        await _save();
-      }
-
-      await _scan();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Added folder: ${path.split(Platform.pathSeparator).last}')),
-        );
-      }
-    } catch (e) {
-      print("Folder Add Error: $e");
+  void _updateLockScreenControls() {
+    if (_currentIndex >= 0 && _filteredPlaylist.isNotEmpty) {
+      String songName = getFileName(_filteredPlaylist[_currentIndex].path);
+      NotificationService.showNowPlayingNotification(
+        title: songName,
+        artist: "Bhai Bhai App",
+        isPlaying: isPlaying,
+      );
     }
   }
 
-  Future<void> _createPlaylist() async {
-    final controller = TextEditingController();
-    final name = await showDialog<String>(
+  Future<void> _loadData() async {
+    final prefs = await SharedPreferences.getInstance();
+    List<String>? saved = prefs.getStringList('saved_folders');
+    List<String>? favs = prefs.getStringList('favorites');
+    List<String>? recent = prefs.getStringList('recent_songs');
+    List<String>? playlists = prefs.getStringList('custom_playlists');
+    
+    if (favs != null) setState(() => _favorites = favs);
+    if (recent != null) setState(() => _recentSongs = recent);
+    
+    if (playlists != null) {
+      setState(() {
+        _customPlaylists = playlists.map((p) {
+          List<String> parts = p.split('|||');
+          return {'name': parts[0], 'songs': parts.length > 1 ? parts[1].split(',').where((s) => s.isNotEmpty).toList() : []};
+        }).toList();
+      });
+    }
+
+    if (saved != null) {
+      setState(() {
+        _savedFolders = saved.map((path) => ({'name': path.split('/').last, 'path': path, 'isChecked': true})).toList();
+      });
+      await updatePlaylistFromFolders();
+    }
+  }
+
+  Future<void> _saveData() async {
+    final prefs = await SharedPreferences.getInstance();
+    List<String> paths = _savedFolders.map((f) => f['path'] as String).toList();
+    await prefs.setStringList('saved_folders', paths);
+    await prefs.setStringList('favorites', _favorites);
+    await prefs.setStringList('recent_songs', _recentSongs);
+    
+    List<String> playlistData = _customPlaylists.map<String>((p) => p['name'].toString() + '|||' + (p['songs'] as List<String>).join(',')).toList();
+    await prefs.setStringList('custom_playlists', playlistData);
+  }
+
+  void createNewPlaylist() {
+    TextEditingController nameController = TextEditingController();
+    showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text('Create Playlist'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: 'Playlist name'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(children: const [Icon(Icons.playlist_add, color: Colors.deepPurple), SizedBox(width: 10), Text('Create Playlist')]),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              autofocus: true,
+              decoration: InputDecoration(hintText: 'Enter playlist name', prefixIcon: const Icon(Icons.music_note), border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)), filled: true, fillColor: Colors.grey.shade50),
+            ),
+            const SizedBox(height: 10),
+            const Text('Example: Gym, Safar, Romantic', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('Create')),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+            onPressed: () {
+              if (nameController.text.trim().isNotEmpty) {
+                setState(() { _customPlaylists.add({'name': nameController.text.trim(), 'songs': <String>[]}); });
+                _saveData();
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✅ Playlist "${nameController.text}" created!'), backgroundColor: Colors.green));
+                setView('Playlists');
+              }
+            },
+            child: const Text('Create'),
+          ),
         ],
       ),
     );
-    controller.dispose();
-    if (name == null || name.isEmpty) return;
-    setState(() {
-      _playlists.add({'name': name, 'songs': <String>[]});
-    });
-    await _save();
-    _setView('Playlists');
   }
 
-  Future<void> _addToPlaylist(File song) async {
-    if (_playlists.isEmpty) {
-      await _createPlaylist();
-      if (_playlists.isEmpty) return;
+  void addToPlaylist(String songPath) {
+    if (_customPlaylists.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('No playlists! Create one first.'), backgroundColor: Colors.orange, action: SnackBarAction(label: 'Create', textColor: Colors.white, onPressed: createNewPlaylist)));
+      return;
     }
-    final selected = await showDialog<int>(
+    showDialog(
       context: context,
-      builder: (context) => SimpleDialog(
-        title: const Text('Add to Playlist'),
-        children: List.generate(_playlists.length, (i) => SimpleDialogOption(
-          onPressed: () => Navigator.pop(context, i),
-          child: Text(_playlists[i]['name'] as String),
-        )),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setStateDialog) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Text('Add to Playlist'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView(
+                shrinkWrap: true,
+                children: _customPlaylists.map((playlist) {
+                  bool isInPlaylist = (playlist['songs'] as List<String>).contains(songPath);
+                  return ListTile(
+                    leading: Icon(isInPlaylist ? Icons.check_circle : Icons.add_circle_outline, color: isInPlaylist ? Colors.green : Colors.grey),
+                    title: Text(playlist['name']),
+                    subtitle: Text('${(playlist['songs'] as List<String>).length} songs'),
+                    onTap: () {
+                      setStateDialog(() {
+                        if (isInPlaylist) { (playlist['songs'] as List<String>).remove(songPath); } else { (playlist['songs'] as List<String>).add(songPath); }
+                      });
+                      setState(() {});
+                      _saveData();
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isInPlaylist ? 'Removed from ${playlist['name']}' : 'Added to ${playlist['name']}'), backgroundColor: isInPlaylist ? Colors.red : Colors.green));
+                    },
+                  );
+                }).toList(),
+              ),
+            ),
+            actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+          );
+        },
       ),
     );
-    if (selected == null) return;
-    final songs = _playlists[selected]['songs'] as List<String>;
-    if (!songs.contains(song.path)) songs.add(song.path);
-    await _save();
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Added to playlist.')));
   }
 
-  String _time(Duration d) {
-    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return '$m:$s';
+  Future<void> _checkPermission() async {
+    if (Platform.isAndroid) {
+      await Permission.notification.request();
+      var storageStatus = await Permission.storage.status;
+      var manageStatus = await Permission.manageExternalStorage.status;
+      if (!storageStatus.isGranted && !manageStatus.isGranted) {
+        await Permission.storage.request();
+        await Permission.manageExternalStorage.request();
+        await Permission.audio.request();
+      }
+      storageStatus = await Permission.storage.status;
+      manageStatus = await Permission.manageExternalStorage.status;
+      setState(() { _hasPermission = storageStatus.isGranted || manageStatus.isGranted; });
+      _loadData();
+    }
   }
 
-  void _openPlayer() {
-    if (_currentIndex < 0 || _currentIndex >= _visibleSongs.length) return;
+  Future<List<File>> _getAudioFilesSafely(Directory dir) async {
+    List<File> audioFiles = [];
+    try {
+      List<FileSystemEntity> entities = dir.listSync(recursive: false);
+      for (FileSystemEntity entity in entities) {
+        try {
+          if (entity is File) {
+            String path = entity.path.toLowerCase();
+            if (path.endsWith('.mp3') || path.endsWith('.m4a') || path.endsWith('.wav') || path.endsWith('.aac') || path.endsWith('.ogg') || path.endsWith('.flac') || path.endsWith('.wma')) {
+              audioFiles.add(entity);
+            }
+          } else if (entity is Directory) {
+            if (!entity.path.split('/').last.startsWith('.')) { audioFiles.addAll(await _getAudioFilesSafely(entity)); }
+          }
+        } catch (e) {}
+      }
+    } catch (e) {}
+    return audioFiles;
+  }
+
+  Future<void> updatePlaylistFromFolders() async {
+    setState(() { _playlist = []; _filteredPlaylist = []; });
+    List<File> newSongs = [];
+    for (var folder in _savedFolders) {
+      if (folder['isChecked'] == true) {
+        Directory dir = Directory(folder['path']);
+        if (dir.existsSync()) {
+          List<File> foundSongs = await _getAudioFilesSafely(dir);
+          newSongs.addAll(foundSongs);
+        }
+      }
+    }
+    setState(() {
+      _playlist = newSongs;
+      filterSearchResults(_searchController.text);
+      if (_currentIndex >= _filteredPlaylist.length) {
+        _currentIndex = -1;
+        _player.stop();
+        isPlaying = false;
+      }
+    });
+  }
+
+  void openFolderManager() {
+    Navigator.push(context, MaterialPageRoute(builder: (context) => FolderManagerScreen(folders: _savedFolders, onFoldersUpdated: () async { await _saveData(); await updatePlaylistFromFolders(); setState(() {}); })));
+  }
+
+  void toggle3D() {
+    setState(() {
+      is3DOn = !is3DOn;
+      if (is3DOn) { _player.setVolume(0.8); _player.setBalance(0.5); } else { _player.setVolume(1.0); _player.setBalance(0.0); }
+    });
+  }
+
+  Future<void> playSong(String path) async { 
+    await _player.play(DeviceFileSource(path)); 
+    addToRecent(path);
+    _updateLockScreenControls();
+  }
+  
+  void playNext() {
+    if (_filteredPlaylist.isNotEmpty && _currentIndex < _filteredPlaylist.length - 1) {
+      setState(() => _currentIndex++);
+      playSong(_filteredPlaylist[_currentIndex].path);
+    }
+  }
+  
+  void playPrevious() {
+    if (_filteredPlaylist.isNotEmpty && _currentIndex > 0) {
+      setState(() => _currentIndex--);
+      playSong(_filteredPlaylist[_currentIndex].path);
+    }
+  }
+
+  String formatTime(Duration d) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    return twoDigits(d.inMinutes.remainder(60)) + ":" + twoDigits(d.inSeconds.remainder(60));
+  }
+
+  String getFileName(String path) {
+    String name = path.split('/').last;
+    name = name.replaceAll(RegExp(r'\.(mp3|m4a|wav|aac|ogg|flac|wma)$', caseSensitive: false), '');
+    return name.replaceAll(RegExp(r'\(.*?\)'), '').replaceAll(RegExp(r'\[.*?\]'), '').replaceAll('_', ' ').replaceAll('-', ' ').trim();
+  }
+
+  void setView(String viewName) {
+    setState(() { _currentView = viewName; _searchController.clear(); filterSearchResults(''); });
+  }
+
+  void filterSearchResults(String query) {
+    setState(() {
+      List<File> baseList = [];
+      if (_currentView == 'Favorites') { baseList = _playlist.where((f) => _favorites.contains(f.path)).toList(); } 
+      else if (_currentView == 'Recent') { baseList = _recentSongs.map((p) => File(p)).where((f) => f.existsSync()).toList(); } 
+      else if (_currentView == 'PlaylistDetail') {
+        var playlist = _customPlaylists.firstWhere((p) => p['name'] == _selectedPlaylist, orElse: () => {'name': '', 'songs': <String>[]});
+        List<String> songPaths = (playlist['songs'] as List<String>);
+        baseList = _playlist.where((f) => songPaths.contains(f.path)).toList();
+      } else { baseList = _playlist; }
+      if (query.isEmpty) { _filteredPlaylist = baseList; } else { _filteredPlaylist = baseList.where((f) => getFileName(f.path).toLowerCase().contains(query.toLowerCase())).toList(); }
+    });
+  }
+
+  void toggleFavorite(String path) async {
+    setState(() {
+      if (_favorites.contains(path)) { _favorites.remove(path); } else { _favorites.add(path); }
+      if (_currentView == 'Favorites') filterSearchResults(_searchController.text);
+    });
+    await _saveData();
+  }
+
+  Future<void> addToRecent(String path) async {
+    setState(() {
+      _recentSongs.remove(path);
+      _recentSongs.insert(0, path);
+      if (_recentSongs.length > 50) _recentSongs.removeLast();
+    });
+    await _saveData();
+  }
+
+  void openFullScreenPlayer() {
+    if (_currentIndex == -1 || _filteredPlaylist.isEmpty) return;
     showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => StatefulBuilder(
-        builder: (context, setModal) {
+      context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) {
           return Container(
-            height: MediaQuery.sizeOf(context).height * .94,
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFF0F172A), Color(0xFF1E1B4B)],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-              ),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-            ),
+            height: MediaQuery.of(context).size.height * 0.95,
+            decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF0F172A), Color(0xFF1E1B4B)], begin: Alignment.topCenter, end: Alignment.bottomCenter), borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
             child: Column(
               children: [
-                const SizedBox(height: 12),
-                Container(
-                  width: 45,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: Colors.white24,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
+                const SizedBox(height: 15),
+                Container(width: 50, height: 5, decoration: BoxDecoration(color: Colors.grey.shade600, borderRadius: BorderRadius.circular(10))),
                 Padding(
-                  padding: const EdgeInsets.all(18),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white, size: 32),
-                      ),
-                      const Text('Now Playing', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
-                      const SizedBox(width: 48),
+                      IconButton(icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white, size: 30), onPressed: () => Navigator.pop(context)),
+                      const Text("Now Playing", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                      IconButton(icon: Icon(is3DOn ? Icons.surround_sound : Icons.surround_sound_outlined, color: is3DOn ? Colors.purpleAccent : Colors.white, size: 30), onPressed: () { toggle3D(); setModalState((){}); }),
                     ],
                   ),
                 ),
                 Container(
-                  width: 260,
-                  height: 260,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: [Color(0xFF4C83FF), Color(0xFFD946EF)],
-                    ),
-                  ),
-                  child: const Icon(Icons.music_note, size: 120, color: Colors.white),
-                ),
-                const SizedBox(height: 25),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 25),
-                  child: Text(
-                    fileName(_visibleSongs[_currentIndex].path),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white, fontSize: 23, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                const Text('Local Audio', style: TextStyle(color: Colors.white54)),
-                const Spacer(),
-                Slider(
-                  value: _position.inMilliseconds.clamp(0, _duration.inMilliseconds).toDouble(),
-                  min: 0,
-                  max: (_duration.inMilliseconds > 0 ? _duration.inMilliseconds : 1).toDouble(),
-                  onChanged: (v) async {
-                    await _player.seek(Duration(milliseconds: v.round()));
-                    setModal(() {});
-                  },
+                  margin: const EdgeInsets.all(30), height: 300, width: 300,
+                  decoration: BoxDecoration(shape: BoxShape.circle, gradient: const LinearGradient(colors: [Color(0xFF4C83FF), Color(0xFFD946EF)], begin: Alignment.topLeft, end: Alignment.bottomRight), boxShadow: [BoxShadow(color: Colors.purple.withOpacity(0.4), blurRadius: 30, spreadRadius: 10)]),
+                  child: const Icon(Icons.music_note, size: 130, color: Colors.white),
                 ),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 25),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  padding: const EdgeInsets.symmetric(horizontal: 30),
+                  child: Column(
                     children: [
-                      Text(_time(_position), style: const TextStyle(color: Colors.white54)),
-                      Text(_time(_duration), style: const TextStyle(color: Colors.white54)),
+                      Text(getFileName(_filteredPlaylist[_currentIndex].path), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      const Text("Local Audio", maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.grey, fontSize: 16)),
                     ],
                   ),
                 ),
                 const Spacer(),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    IconButton(
-                      iconSize: 30,
-                      onPressed: () async {
-                        await _toggleFavorite(_visibleSongs[_currentIndex].path);
-                        setModal(() {});
-                      },
-                      icon: Icon(
-                        _favorites.contains(_visibleSongs[_currentIndex].path) ? Icons.favorite : Icons.favorite_border,
-                        color: Colors.white,
-                      ),
-                    ),
-                    IconButton(
-                      iconSize: 48,
-                      onPressed: () async {
-                        await _previous();
-                        setModal(() {});
-                      },
-                      icon: const Icon(Icons.skip_previous, color: Colors.white),
-                    ),
-                    Container(
-                      width: 72,
-                      height: 72,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.purpleAccent,
-                      ),
-                      child: IconButton(
-                        iconSize: 42,
-                        onPressed: () async {
-                          if (_playing) {
-                            await _player.pause();
-                          } else {
-                            await _player.resume();
-                          }
-                          setModal(() {});
-                        },
-                        icon: Icon(_playing ? Icons.pause : Icons.play_arrow, color: Colors.white),
-                      ),
-                    ),
-                    IconButton(
-                      iconSize: 48,
-                      onPressed: () async {
-                        await _next();
-                        setModal(() {});
-                      },
-                      icon: const Icon(Icons.skip_next, color: Colors.white),
-                    ),
-                    IconButton(
-                      iconSize: 28,
-                      onPressed: () => _addToPlaylist(_visibleSongs[_currentIndex]),
-                      icon: const Icon(Icons.playlist_add, color: Colors.white70),
-                    ),
-                  ],
+                StreamBuilder<Duration>(
+                  stream: _player.onPositionChanged,
+                  builder: (context, snapshot) {
+                    Duration pos = snapshot.data ?? _position;
+                    return Column(
+                      children: [
+                        SliderTheme(
+                          data: SliderThemeData(trackHeight: 4, activeTrackColor: Colors.purpleAccent, inactiveTrackColor: Colors.white24, thumbColor: Colors.white, overlayColor: Colors.purpleAccent.withOpacity(0.2)),
+                          child: Slider(
+                            min: 0, max: _duration.inSeconds.toDouble() > 0 ? _duration.inSeconds.toDouble() : 1.0, value: pos.inSeconds.toDouble().clamp(0.0, _duration.inSeconds.toDouble() > 0 ? _duration.inSeconds.toDouble() : 1.0),
+                            onChanged: (value) async { await _player.seek(Duration(seconds: value.toInt())); },
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 25),
+                          child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(formatTime(pos), style: const TextStyle(color: Colors.white54)), Text(formatTime(_duration), style: const TextStyle(color: Colors.white54))]),
+                        ),
+                      ]
+                    );
+                  }
                 ),
-                const SizedBox(height: 45),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 50, top: 15),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      IconButton(icon: Icon(_favorites.contains(_filteredPlaylist[_currentIndex].path) ? Icons.favorite : Icons.favorite_border, color: _favorites.contains(_filteredPlaylist[_currentIndex].path) ? Colors.deepPurpleAccent : Colors.white54, size: 28), onPressed: () { toggleFavorite(_filteredPlaylist[_currentIndex].path); setModalState((){}); setState((){}); }),
+                      IconButton(iconSize: 45, color: Colors.white, icon: const Icon(Icons.skip_previous), onPressed: () { playPrevious(); setModalState((){}); }),
+                      StreamBuilder<PlayerState>(
+                        stream: _player.onPlayerStateChanged,
+                        builder: (context, snapshot) {
+                          bool playing = snapshot.data == PlayerState.playing || isPlaying;
+                          return Container(
+                            height: 75, width: 75, decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.purpleAccent),
+                            child: IconButton(iconSize: 45, color: Colors.white, icon: Icon(playing ? Icons.pause : Icons.play_arrow), onPressed: () async { playing ? await _player.pause() : await _player.resume(); }),
+                          );
+                        }
+                      ),
+                      IconButton(iconSize: 45, color: Colors.white, icon: const Icon(Icons.skip_next), onPressed: () { playNext(); setModalState((){}); }),
+                      IconButton(icon: const Icon(Icons.playlist_add, color: Colors.white54, size: 28), onPressed: () => addToPlaylist(_filteredPlaylist[_currentIndex].path)),
+                    ],
+                  ),
+                ),
               ],
             ),
           );
@@ -444,355 +416,376 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _songList() {
-    if (_isScanning) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(color: Colors.deepPurple),
-            SizedBox(height: 16),
-            Text('Scanning music files...', style: TextStyle(color: Colors.grey)),
-          ],
-        ),
-      );
-    }
-    
-    if (_visibleSongs.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.library_music, size: 64, color: Colors.black12),
-            const SizedBox(height: 12),
-            Text(
-              _view == 'Favorites' ? 'No favorites yet' : _view == 'Recent' ? 'No recent songs' : 'No songs found',
-              style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 18),
-            if (_view == 'Songs')
-              Column(
-                children: [
-                  const Text('Add a music folder to get started.', style: TextStyle(color: Colors.grey)),
-                  const SizedBox(height: 12),
-                  FilledButton.icon(
-                    onPressed: _addFolder,
-                    icon: const Icon(Icons.folder_open),
-                    label: const Text('Add Music Folder'),
-                  ),
-                ],
-              ),
-          ],
-        ),
-      );
-    }
-    return ListView.builder(
-      itemCount: _visibleSongs.length,
-      itemBuilder: (context, index) {
-        final song = _visibleSongs[index];
-        final current = index == _currentIndex && _playing;
-        return ListTile(
-          leading: CircleAvatar(
-            backgroundColor: current ? Colors.deepPurple : Colors.grey.shade200,
-            child: Icon(Icons.music_note, color: current ? Colors.white : Colors.grey),
-          ),
-          title: Text(
-            fileName(song.path),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontWeight: current ? FontWeight.bold : FontWeight.w500,
-              color: current ? Colors.deepPurple : Colors.black87,
-            ),
-          ),
-          subtitle: const Text('Local Audio'),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                onPressed: () => _toggleFavorite(song.path),
-                icon: Icon(
-                  _favorites.contains(song.path) ? Icons.favorite : Icons.favorite_border,
-                  color: _favorites.contains(song.path) ? Colors.deepPurpleAccent : Colors.grey,
-                ),
-              ),
-              IconButton(
-                onPressed: () => _addToPlaylist(song),
-                icon: const Icon(Icons.playlist_add, color: Colors.grey),
-              ),
-            ],
-          ),
-          onTap: () => _play(song),
-        );
-      },
-    );
-  }
-
-  Widget _playlistsView() {
-    if (_playlists.isEmpty) {
-      return Center(
-        child: FilledButton.icon(
-          onPressed: _createPlaylist,
-          icon: const Icon(Icons.add),
-          label: const Text('Create Playlist'),
-        ),
-      );
-    }
-    return ListView.builder(
-      itemCount: _playlists.length,
-      itemBuilder: (context, i) {
-        final p = _playlists[i];
-        final songs = p['songs'] as List<String>;
-        return Card(
-          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-          child: ListTile(
-            leading: const CircleAvatar(child: Icon(Icons.queue_music)),
-            title: Text(p['name'] as String, style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text('${songs.length} songs'),
-            trailing: IconButton(
-              icon: const Icon(Icons.delete_outline, color: Colors.red),
-              onPressed: () async {
-                setState(() => _playlists.removeAt(i));
-                await _save();
-              },
-            ),
-            onTap: () {
-              setState(() {
-                _playlistDetail = p['name'] as String;
-                _view = 'PlaylistDetail';
-              });
-              _filter('');
-            },
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _body() {
-    if (_view == 'Playlists') return _playlistsView();
-    if (_view == 'PlaylistDetail') {
-      return Column(
-        children: [
-          ListTile(
-            leading: const BackButton(),
-            title: Text(_playlistDetail ?? 'Playlist'),
-            onTap: () => _setView('Playlists'),
-          ),
-          Expanded(child: _songList()),
-        ],
-      );
-    }
-    return _songList();
-  }
-
-  Widget _tab(String name) {
-    final selected = _view == name;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => _setView(name),
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 3),
-          padding: const EdgeInsets.symmetric(vertical: 9),
-          decoration: BoxDecoration(
-            color: selected ? Colors.black : Colors.grey.shade100,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Text(
-            name,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: selected ? Colors.white : Colors.grey.shade700,
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
+  Widget buildMiniPlayer() {
+    if (_currentIndex < 0 || _filteredPlaylist.isEmpty) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.pink.shade100, Colors.purple.shade100]), borderRadius: BorderRadius.circular(30), boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 5))]),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+        leading: const CircleAvatar(radius: 22, backgroundColor: Colors.black87, child: Icon(Icons.music_note, color: Colors.white)),
+        title: Text(getFileName(_filteredPlaylist[_currentIndex].path), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        subtitle: const Text("Local Audio", maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Colors.black54)),
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          IconButton(icon: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled, color: Colors.black54, size: 35), onPressed: () { isPlaying ? _player.pause() : _player.resume(); }),
+          IconButton(icon: const Icon(Icons.skip_next, color: Colors.black54, size: 30), onPressed: playNext),
+        ]),
+        onTap: openFullScreenPlayer,
       ),
     );
   }
 
-  Widget _miniPlayer() {
-    final title = fileName(_visibleSongs[_currentIndex].path);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: _openPlayer,
-        child: Container(
-          margin: const EdgeInsets.all(8),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFFFFE4F1), Color(0xFFE9D5FF)],
-            ),
-            borderRadius: BorderRadius.circular(22),
-          ),
-          child: Row(
-            children: [
-              const CircleAvatar(
-                backgroundColor: Colors.black87,
-                child: Icon(Icons.music_note, color: Colors.white),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-              ),
-              IconButton(
-                onPressed: () => _playing ? _player.pause() : _player.resume(),
-                icon: Icon(_playing ? Icons.pause : Icons.play_arrow),
-              ),
-              IconButton(
-                onPressed: _next,
-                icon: const Icon(Icons.skip_next),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+  @override
+  void dispose() { 
+    _player.dispose();
+    _searchController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    NotificationService.cancelNotification();
+    super.dispose(); 
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(color: Colors.deepPurple),
-        ),
-      );
-    }
-    
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: TextField(
-          controller: _search,
-          onChanged: _filter,
-          decoration: const InputDecoration(
-            hintText: 'Search songs...',
-            border: InputBorder.none,
-            prefixIcon: Icon(Icons.search),
-          ),
+        backgroundColor: Colors.white, elevation: 0, iconTheme: const IconThemeData(color: Colors.black87),
+        title: Container(
+          height: 40, decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
+          child: TextField(controller: _searchController, onChanged: filterSearchResults, decoration: const InputDecoration(hintText: "Search songs, playlists...", hintStyle: TextStyle(fontSize: 14, color: Colors.grey), prefixIcon: Icon(Icons.search, color: Colors.grey, size: 20), border: InputBorder.none, contentPadding: EdgeInsets.symmetric(vertical: 10))),
         ),
       ),
+      
       drawer: Drawer(
-        child: SafeArea(
-          child: Column(
-            children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(22),
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Color(0xFF1E1B4B), Color(0xFFD946EF)],
+        backgroundColor: Colors.white,
+        child: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.only(top: 60, bottom: 20, left: 20),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF1E1B4B), Color(0xFFD946EF)], 
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
+                    child: const Icon(Icons.headphones, size: 40, color: Colors.white),
                   ),
-                ),
-                child: const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.headphones, color: Colors.white, size: 45),
-                    SizedBox(height: 12),
-                    Text('Bhai Bhai App', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-                    Text('Local Music Player', style: TextStyle(color: Colors.white70)),
-                  ],
-                ),
+                  const SizedBox(height: 15),
+                  const Text('Bhai Bhai App', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                  const SizedBox(height: 5),
+                  Text('${_playlist.length} Local Tracks', style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                ],
               ),
-              ListTile(
-                leading: const Icon(Icons.folder),
-                title: const Text('Choose Folders'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _addFolder();
-                },
+            ),
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                  ListTile(leading: const Icon(Icons.folder, color: Colors.deepPurple), title: const Text('Choose Folders', style: TextStyle(fontWeight: FontWeight.w600)), onTap: () { Navigator.pop(context); openFolderManager(); }),
+                  ListTile(leading: const Icon(Icons.refresh, color: Colors.blueAccent), title: const Text('Scan Music', style: TextStyle(fontWeight: FontWeight.w600)), onTap: () { Navigator.pop(context); updatePlaylistFromFolders(); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Scanning...'))); }),
+                  const Divider(),
+                  
+                  ListTile(
+                    leading: const Icon(Icons.lyrics, color: Colors.teal),
+                    title: const Text('Lyrics', style: TextStyle(fontWeight: FontWeight.w600)),
+                    onTap: () {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lyrics feature coming soon! 🎵')));
+                    }
+                  ),
+                  
+                  ListTile(
+                    leading: const Icon(Icons.bar_chart, color: Colors.indigo),
+                    title: const Text('Visualizer', style: TextStyle(fontWeight: FontWeight.w600)),
+                    onTap: () {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Visualizer feature coming soon! 📊')));
+                    }
+                  ),
+                  
+                  ListTile(
+                    leading: const Icon(Icons.equalizer, color: Colors.orange),
+                    title: const Text('Equalizer & Effects', style: TextStyle(fontWeight: FontWeight.w600)),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (context) => const EqualizerScreen()));
+                    }
+                  ),
+                  
+                  ListTile(
+                    leading: const Icon(Icons.palette, color: Colors.pink),
+                    title: const Text('Themes', style: TextStyle(fontWeight: FontWeight.w600)),
+                    onTap: () {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Themes Coming Soon! 🎨')));
+                    }
+                  ),
+                  
+                  const Divider(),
+                  ListTile(leading: Icon(Icons.settings, color: Colors.grey.shade700), title: const Text('Settings'), onTap: () {}),
+                  ListTile(leading: const Icon(Icons.share, color: Colors.green), title: const Text('Share App'), onTap: () {}),
+                ],
               ),
-              ListTile(
-                leading: const Icon(Icons.refresh),
-                title: const Text('Scan Music'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _scan();
-                },
-              ),
-              const Divider(),
-              ListTile(
-                leading: const Icon(Icons.lyrics, color: Colors.pink),
-                title: const Text('Lyrics'),
-                onTap: () {},
-              ),
-              ListTile(
-                leading: const Icon(Icons.equalizer, color: Colors.orange),
-                title: const Text('Visualizer'),
-                onTap: () {},
-              ),
-              ListTile(
-                leading: const Icon(Icons.audiotrack, color: Colors.teal),
-                title: const Text('Audio Effects'),
-                onTap: () {},
-              ),
-              ListTile(
-                leading: const Icon(Icons.radio, color: Colors.blue),
-                title: const Text('FM Radio'),
-                onTap: () {},
-              ),
-              ListTile(
-                leading: const Icon(Icons.timer, color: Colors.orange),
-                title: const Text('Sleep Timer'),
-                onTap: () {},
-              ),
-              ListTile(
-                leading: const Icon(Icons.palette, color: Colors.pink),
-                title: const Text('Themes'),
-                onTap: () {},
-              ),
-              const Divider(),
-              ListTile(
-                leading: const Icon(Icons.settings, color: Colors.grey),
-                title: const Text('Settings'),
-                onTap: () {},
-              ),
-              ListTile(
-                leading: const Icon(Icons.share, color: Colors.green),
-                title: const Text('Share App'),
-                onTap: () {},
-              ),
-            ],
-          ),
+            ),
+            const Padding(
+              padding: EdgeInsets.all(20),
+              child: Text("Version 1.0.0\nMade with ❤️ by Bhai Bhai", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 12)),
+            )
+          ],
         ),
       ),
+      
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
             child: Row(
               children: [
-                _tab('Songs'),
-                _tab('Favorites'),
-                _tab('Recent'),
-                _tab('Playlists'),
+                Expanded(child: GestureDetector(onTap: () => setView('Favorites'), child: Container(height: 80, decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF982B4D), Color(0xFFC7436B)]), borderRadius: BorderRadius.circular(15), border: _currentView == 'Favorites' ? Border.all(color: Colors.black87, width: 3) : null), child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.end, children: [Icon(_currentView == 'Favorites' ? Icons.favorite : Icons.favorite_border, color: Colors.white, size: 20), const SizedBox(height: 5), const Text("Favourites", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))]))))),
+                const SizedBox(width: 10),
+                Expanded(child: GestureDetector(onTap: () => setView('Playlists'), child: Container(height: 80, decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF1E5F74), Color(0xFF2C7D99)]), borderRadius: BorderRadius.circular(15), border: _currentView == 'Playlists' ? Border.all(color: Colors.black87, width: 3) : null), child: const Padding(padding: EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.end, children: [Icon(Icons.queue_music, color: Colors.white, size: 20), SizedBox(height: 5), Text("Playlists", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))]))))),
+                const SizedBox(width: 10),
+                Expanded(child: GestureDetector(onTap: () => setView('Recent'), child: Container(height: 80, decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(15), border: _currentView == 'Recent' ? Border.all(color: Colors.purpleAccent, width: 3) : null), child: const Padding(padding: EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.end, children: [Icon(Icons.history, color: Colors.white, size: 20), SizedBox(height: 5), Text("Recent", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))]))))),
               ],
             ),
           ),
-          Expanded(child: _body()),
-          if (_currentIndex >= 0 && _visibleSongs.isNotEmpty) _miniPlayer(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                GestureDetector(onTap: () => setView('Songs'), child: Container(padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8), decoration: BoxDecoration(color: _currentView == 'Songs' ? Colors.black : Colors.transparent, borderRadius: BorderRadius.circular(20)), child: Text("Songs", style: TextStyle(color: _currentView == 'Songs' ? Colors.white : Colors.grey, fontWeight: FontWeight.bold)))),
+                GestureDetector(onTap: () => setView('Favorites'), child: Container(padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8), decoration: BoxDecoration(color: _currentView == 'Favorites' ? Colors.black : Colors.transparent, borderRadius: BorderRadius.circular(20)), child: Text("Favorites", style: TextStyle(color: _currentView == 'Favorites' ? Colors.white : Colors.grey, fontWeight: FontWeight.bold)))),
+                GestureDetector(onTap: () => setView('Recent'), child: Container(padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8), decoration: BoxDecoration(color: _currentView == 'Recent' ? Colors.black : Colors.transparent, borderRadius: BorderRadius.circular(20)), child: Text("Recent", style: TextStyle(color: _currentView == 'Recent' ? Colors.white : Colors.grey, fontWeight: FontWeight.bold)))),
+                GestureDetector(onTap: () => setView('Playlists'), child: Container(padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8), decoration: BoxDecoration(color: _currentView == 'Playlists' ? Colors.black : Colors.transparent, borderRadius: BorderRadius.circular(20)), child: Text("Playlists", style: TextStyle(color: _currentView == 'Playlists' ? Colors.white : Colors.grey, fontWeight: FontWeight.bold)))),
+              ],
+            ),
+          ),
+          if (_currentView == 'Playlists')
+            Expanded(
+              child: _customPlaylists.isEmpty
+                ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.queue_music, size: 80, color: Colors.deepPurple.shade100), const SizedBox(height: 20), const Text("No Playlists Yet", style: TextStyle(color: Colors.black87, fontSize: 20, fontWeight: FontWeight.bold)), const SizedBox(height: 10), const Text("Create your first playlist!", style: TextStyle(color: Colors.grey, fontSize: 14)), const SizedBox(height: 30), ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)), padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15)), icon: const Icon(Icons.add), label: const Text("Create Playlist", style: TextStyle(fontSize: 16)), onPressed: createNewPlaylist)]))
+                : ListView.builder(
+                    itemCount: _customPlaylists.length,
+                    itemBuilder: (context, index) {
+                      var playlist = _customPlaylists[index];
+                      int songCount = (playlist['songs'] as List<String>).length;
+                      return Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), boxShadow: [BoxShadow(color: Colors.grey.shade200, blurRadius: 5, offset: const Offset(0, 2))]),
+                        child: ListTile(
+                          leading: Container(height: 50, width: 50, decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.purple.shade300, Colors.deepPurple]), borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.playlist_play, color: Colors.white)),
+                          title: Text(playlist['name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                          subtitle: Text('$songCount songs • ${songCount > 0 ? "Tap to play" : "Add songs"}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (songCount > 0) IconButton(icon: const Icon(Icons.play_arrow, color: Colors.deepPurple, size: 28), onPressed: () { _selectedPlaylist = playlist['name']; setView('PlaylistDetail'); filterSearchResults(''); }),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 22),
+                                onPressed: () {
+                                  showDialog(
+                                    context: context,
+                                    builder: (context) => AlertDialog(
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)), title: const Text('Delete Playlist?'), content: Text('Are you sure you want to delete "${playlist['name']}"?'),
+                                      actions: [
+                                        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+                                        ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white), onPressed: () { setState(() { _customPlaylists.removeAt(index); }); _saveData(); Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Playlist deleted!'), backgroundColor: Colors.red)); }, child: const Text('Delete')),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                          onTap: () { _selectedPlaylist = playlist['name']; setView('PlaylistDetail'); filterSearchResults(''); },
+                        ),
+                      );
+                    },
+                  ),
+            )
+          else if (_currentView == 'PlaylistDetail')
+            Expanded(
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(15),
+                    child: Row(
+                      children: [
+                        IconButton(icon: const Icon(Icons.arrow_back, color: Colors.black87), onPressed: () => setView('Playlists')),
+                        Expanded(child: Text(_selectedPlaylist, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold))),
+                        Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: Colors.deepPurple.shade50, borderRadius: BorderRadius.circular(20)), child: Text('${_filteredPlaylist.length} songs', style: const TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold))),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: _filteredPlaylist.isEmpty
+                      ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.music_off, size: 60, color: Colors.grey.shade300), const SizedBox(height: 10), const Text('No songs in this playlist', style: TextStyle(color: Colors.grey)), const SizedBox(height: 10), ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white), icon: const Icon(Icons.add), label: const Text('Add Songs'), onPressed: () => setView('Songs'))]))
+                      : ListView.builder(
+                          itemCount: _filteredPlaylist.length,
+                          itemBuilder: (context, index) {
+                            String path = _filteredPlaylist[index].path;
+                            bool isCurrent = _currentIndex == index && isPlaying;
+                            return Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                              decoration: BoxDecoration(color: isCurrent ? Colors.deepPurple.shade50 : Colors.white, borderRadius: BorderRadius.circular(12)),
+                              child: ListTile(
+                                leading: Container(height: 40, width: 40, decoration: BoxDecoration(color: isCurrent ? Colors.deepPurple : Colors.grey.shade200, borderRadius: BorderRadius.circular(8)), child: Icon(Icons.music_note, color: isCurrent ? Colors.white : Colors.grey)),
+                                title: Text(getFileName(path), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal, color: isCurrent ? Colors.deepPurple : Colors.black87)),
+                                subtitle: Text("Local Audio", style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent),
+                                  onPressed: () { setState(() { var playlist = _customPlaylists.firstWhere((p) => p['name'] == _selectedPlaylist); (playlist['songs'] as List<String>).remove(path); }); _saveData(); filterSearchResults(''); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Removed from playlist'), backgroundColor: Colors.red)); },
+                                ),
+                                onTap: () { setState(() => _currentIndex = index); playSong(path); },
+                              ),
+                            );
+                          },
+                        ),
+                  ),
+                ],
+              ),
+            )
+          else 
+            Expanded(
+              child: _filteredPlaylist.isEmpty
+                  ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                      Icon(_currentView == 'Recent' ? Icons.history_toggle_off : Icons.library_music, size: 60, color: Colors.black12), 
+                      const SizedBox(height: 10), 
+                      Text(_currentView == 'Favorites' ? "No favorites yet" : _currentView == 'Recent' ? "No listening history yet" : "No songs found", style: const TextStyle(color: Colors.grey, fontSize: 16, fontWeight: FontWeight.bold)),
+                      if (_currentView == 'Songs') Column(children: [const SizedBox(height: 10), const Text("Open side menu (☰) to choose folders", style: TextStyle(color: Colors.grey, fontSize: 14)), const SizedBox(height: 20), ElevatedButton.icon(onPressed: openFolderManager, icon: const Icon(Icons.folder_open), label: const Text("Open Folder Manager"), style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white))]),
+                    ]))
+                  : ListView.builder(
+                      itemCount: _filteredPlaylist.length,
+                      itemBuilder: (context, index) {
+                        bool isCurrent = _currentIndex == index && isPlaying;
+                        String path = _filteredPlaylist[index].path;
+                        return Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                          decoration: BoxDecoration(color: isCurrent ? Colors.deepPurple.shade50 : Colors.transparent, borderRadius: BorderRadius.circular(12)),
+                          child: ListTile(
+                            leading: Container(height: 50, width: 50, decoration: BoxDecoration(color: isCurrent ? Colors.deepPurple : Colors.grey.shade200, borderRadius: BorderRadius.circular(10)), child: Icon(Icons.music_note, color: isCurrent ? Colors.white : Colors.grey)),
+                            title: Text(getFileName(path), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: isCurrent ? FontWeight.bold : FontWeight.w500, color: isCurrent ? Colors.deepPurple : Colors.black87)),
+                            subtitle: Text("Local Audio", maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(icon: Icon(_favorites.contains(path) ? Icons.favorite : Icons.favorite_border, color: _favorites.contains(path) ? Colors.deepPurpleAccent : Colors.grey, size: 22), onPressed: () => toggleFavorite(path)),
+                                IconButton(icon: const Icon(Icons.playlist_add, color: Colors.grey, size: 22), onPressed: () => addToPlaylist(path)),
+                              ],
+                            ),
+                            onTap: () { setState(() => _currentIndex = index); playSong(path); },
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          buildMiniPlayer(),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: 0,
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.headphones), label: 'My Music'),
-          NavigationDestination(icon: Icon(Icons.play_circle_outline), label: 'Watch'),
-        ],
+      bottomNavigationBar: BottomNavigationBar(
+        selectedItemColor: Colors.black, unselectedItemColor: Colors.grey, showSelectedLabels: true, showUnselectedLabels: true,
+        items: const [BottomNavigationBarItem(icon: Icon(Icons.headphones), label: "My music"), BottomNavigationBarItem(icon: Icon(Icons.play_circle_outline), label: "Watch")],
       ),
     );
   }
+}
 
+class FolderManagerScreen extends StatefulWidget {
+  final List<Map<String, dynamic>> folders;
+  final VoidCallback onFoldersUpdated;
+  const FolderManagerScreen({Key? key, required this.folders, required this.onFoldersUpdated}) : super(key: key);
   @override
-  void dispose() {
-    _stateSub?.cancel();
-    _durationSub?.cancel();
-    _positionSub?.cancel();
-    _completeSub?.cancel();
-    _player.dispose();
-    _search.dispose();
-    super.dispose();
+  State<FolderManagerScreen> createState() => _FolderManagerScreenState();
+}
+
+class _FolderManagerScreenState extends State<FolderManagerScreen> {
+  bool _hasPermission = false;
+  @override
+  void initState() { super.initState(); _checkPermission(); }
+  
+  Future<void> _checkPermission() async {
+    if (Platform.isAndroid) {
+      var storageStatus = await Permission.storage.status;
+      var manageStatus = await Permission.manageExternalStorage.status;
+      setState(() { _hasPermission = storageStatus.isGranted || manageStatus.isGranted; });
+    }
+  }
+  
+  Future<void> _requestPermission() async {
+    await Permission.storage.request();
+    await Permission.manageExternalStorage.request();
+    await Permission.audio.request();
+    await _checkPermission();
+    widget.onFoldersUpdated();
+  }
+  
+  Future<void> addNewFolder() async {
+    try {
+      String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+      if (selectedDirectory != null) {
+        bool exists = widget.folders.any((f) => f['path'] == selectedDirectory);
+        if (!exists) {
+          setState(() { widget.folders.add({'name': selectedDirectory.split('/').last, 'path': selectedDirectory, 'isChecked': true}); });
+          widget.onFoldersUpdated();
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Added: ' + selectedDirectory.split('/').last)));
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Folder already added!')));
+        }
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: " + e.toString())));
+    }
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white, elevation: 0, leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.black87), onPressed: () => Navigator.pop(context)), 
+        title: const Text('Choose folders to display', style: TextStyle(color: Colors.black87, fontSize: 20, fontWeight: FontWeight.bold)),
+        actions: [IconButton(icon: const Icon(Icons.refresh, color: Colors.deepPurple), onPressed: () { _checkPermission(); widget.onFoldersUpdated(); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Refreshed!'), duration: Duration(seconds: 1))); })],
+      ),
+      body: Column(
+        children: [
+          if (!_hasPermission)
+            Container(
+              padding: const EdgeInsets.all(15), margin: const EdgeInsets.all(15), decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.red.shade200)), 
+              child: Column(children: [const Text("⚠️ Storage Permission Required!", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)), const SizedBox(height: 5), const Text("Please allow Storage Access to scan your songs.", textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.black87)), const SizedBox(height: 10), ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent), onPressed: _requestPermission, child: const Text("Grant Permission", style: TextStyle(color: Colors.white)))])
+            ),
+          Expanded(
+            child: widget.folders.isEmpty 
+              ? const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.folder_open, size: 60, color: Colors.grey), SizedBox(height: 10), Text("No folders added yet", style: TextStyle(color: Colors.grey)), SizedBox(height: 5), Text("Tap + below to add a folder", style: TextStyle(color: Colors.grey, fontSize: 12))])) 
+              : ListView.builder(
+                  itemCount: widget.folders.length,
+                  itemBuilder: (context, index) {
+                    var folder = widget.folders[index];
+                    return Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.grey.shade200, blurRadius: 4, offset: const Offset(0, 2))]),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 4), 
+                        leading: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.purple.shade50, borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.folder, color: Colors.deepPurpleAccent, size: 30)), 
+                        title: Text(folder['name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), 
+                        subtitle: Text(folder['path'], style: const TextStyle(fontSize: 12, color: Colors.grey), maxLines: 1, overflow: TextOverflow.ellipsis), 
+                        trailing: GestureDetector(onTap: () { setState(() { folder['isChecked'] = !folder['isChecked']; }); widget.onFoldersUpdated(); }, child: Container(width: 28, height: 28, decoration: BoxDecoration(shape: BoxShape.circle, color: folder['isChecked'] ? Colors.black87 : Colors.transparent, border: Border.all(color: Colors.black87, width: 2)), child: folder['isChecked'] ? const Icon(Icons.check, color: Colors.white, size: 18) : null)),
+                      ),
+                    );
+                  },
+                ),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(backgroundColor: Colors.deepPurple, icon: const Icon(Icons.add, color: Colors.white), label: const Text("Add Folder", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), onPressed: addNewFolder),
+    );
   }
 }
