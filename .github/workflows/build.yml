@@ -47,12 +47,27 @@ jobs:
           flutter pub add audioplayers file_picker permission_handler shared_preferences flutter_local_notifications
           flutter pub get
 
-      - name: Fix Namespace for on_audio_query_android (After Dependencies)
+      - name: Fix Namespace for All Packages (Corrected)
         run: |
-          # Find and fix namespace in on_audio_query_android (now it exists)
-          find ~/.pub-cache/hosted/pub.dev/on_audio_query_android-* -name "build.gradle" -exec sed -i '/android {/a \    namespace "com.example.on_audio_query"' {} \; 2>/dev/null || echo "on_audio_query_android not found, skipping..."
+          # Fix audioplayers_android namespace
+          find ~/.pub-cache/hosted/pub.dev/audioplayers_android-* -name "build.gradle" -exec sed -i '/android {/a \    namespace "com.audioplayers.android"' {} \; 2>/dev/null || true
           
-          # Fix app/build.gradle namespace
+          # Fix on_audio_query_android namespace (if exists)
+          find ~/.pub-cache/hosted/pub.dev/on_audio_query_android-* -name "build.gradle" -exec sed -i '/android {/a \    namespace "com.on_audio_query.android"' {} \; 2>/dev/null || true
+          
+          # Fix permission_handler_android namespace
+          find ~/.pub-cache/hosted/pub.dev/permission_handler_android-* -name "build.gradle" -exec sed -i '/android {/a \    namespace "com.permission_handler.android"' {} \; 2>/dev/null || true
+          
+          # Fix file_picker namespace
+          find ~/.pub-cache/hosted/pub.dev/file_picker-* -name "build.gradle" -exec sed -i '/android {/a \    namespace "com.file_picker"' {} \; 2>/dev/null || true
+          
+          # Fix shared_preferences_android namespace
+          find ~/.pub-cache/hosted/pub.dev/shared_preferences_android-* -name "build.gradle" -exec sed -i '/android {/a \    namespace "com.shared_preferences.android"' {} \; 2>/dev/null || true
+          
+          # Fix flutter_local_notifications namespace
+          find ~/.pub-cache/hosted/pub.dev/flutter_local_notifications-* -name "build.gradle" -exec sed -i '/android {/a \    namespace "com.flutter_local_notifications"' {} \; 2>/dev/null || true
+          
+          # Fix main app namespace
           if [ -f "android/app/build.gradle" ]; then
             if ! grep -q "namespace" android/app/build.gradle; then
               sed -i '/android {/a \    namespace "com.example.music"' android/app/build.gradle
@@ -64,9 +79,6 @@ jobs:
               sed -i '/android {/a \    namespace = "com.example.music"' android/app/build.gradle.kts
             fi
           fi
-          
-          # Also fix any other packages with namespace issues
-          find ~/.pub-cache/hosted/pub.dev/ -name "build.gradle" -exec sed -i '/android {/a \    namespace "com.example.package"' {} \; 2>/dev/null || true
 
       - name: Create Splash Screen
         run: |
