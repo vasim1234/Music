@@ -30,16 +30,36 @@ jobs:
           flutter create . --platforms=android --project-name=music
           flutter clean
 
-      - name: Fix Android SDK to 37 & Enable Desugaring
+      - name: Fix Android SDK & Enable Desugaring
         run: |
           if [ -f "android/app/build.gradle.kts" ]; then
+            # For build.gradle.kts (new Flutter projects)
             sed -i 's/compileSdk = .*/compileSdk = 37/' android/app/build.gradle.kts
             sed -i 's/targetSdk = .*/targetSdk = 37/' android/app/build.gradle.kts
             sed -i 's/minSdk = .*/minSdk = 24/' android/app/build.gradle.kts
+            
+            # Enable desugaring in build.gradle.kts
+            cat << 'GRADLE_EOF' >> android/app/build.gradle.kts
+          android {
+              compileOptions {
+                  isCoreLibraryDesugaringEnabled = true
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+          }
+          dependencies {
+              coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+          }
+          GRADLE_EOF
           else
+            # For build.gradle (older Flutter projects)
             sed -i 's/compileSdkVersion .*/compileSdkVersion 37/' android/app/build.gradle
             sed -i 's/targetSdkVersion .*/targetSdkVersion 37/' android/app/build.gradle
             sed -i 's/minSdkVersion .*/minSdkVersion 24/' android/app/build.gradle
+            
+            # Enable desugaring in build.gradle
+            sed -i '/compileOptions {/a \        coreLibraryDesugaringEnabled true' android/app/build.gradle
+            echo "dependencies { coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4' }" >> android/app/build.gradle
           fi
 
       - name: Add Dependencies
@@ -296,7 +316,6 @@ jobs:
             Future<void> _addFolder() async {
               await _requestStorage();
               try {
-                // FIX: Use FilePicker.getDirectoryPath() without .platform
                 final path = await FilePicker.getDirectoryPath();
                 if (path == null) return;
                 if (_folders.any((f) => f['path'] == path)) {
