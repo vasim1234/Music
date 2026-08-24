@@ -86,6 +86,11 @@ jobs:
               }
           }
 
+          // ✅ ADD DESUGARING DEPENDENCY AT ROOT LEVEL
+          dependencies {
+              coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
+          }
+
           rootProject.buildDir = '../build'
           subprojects {
               project.buildDir = "${rootProject.buildDir}/${project.name}"
@@ -104,7 +109,6 @@ jobs:
             sed -i 's/targetSdkVersion .*/targetSdkVersion 36/g' android/app/build.gradle
             sed -i 's/minSdkVersion .*/minSdkVersion 24/g' android/app/build.gradle
             sed -i '/compileOptions {/a \        coreLibraryDesugaringEnabled true' android/app/build.gradle
-            echo "dependencies { coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4' }" >> android/app/build.gradle
             
             if ! grep -q "namespace" android/app/build.gradle; then
               sed -i '/android {/a \    namespace "com.example.music"' android/app/build.gradle
@@ -115,7 +119,7 @@ jobs:
             sed -i 's/compileSdk = .*/compileSdk = 36/g' android/app/build.gradle.kts || true
             sed -i '/compileOptions {/a \        isCoreLibraryDesugaringEnabled = true' android/app/build.gradle.kts || true
             
-            # ✅ FIX: Use double quotes for Kotlin DSL
+            # ✅ FIX: Double quotes for Kotlin DSL
             echo 'dependencies { coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4") }' >> android/app/build.gradle.kts || true
             
             if ! grep -q "namespace" android/app/build.gradle.kts; then
