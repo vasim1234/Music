@@ -28,9 +28,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
   StreamSubscription? _stateSub, _durationSub, _positionSub, _completeSub;
-  bool _hasPermission = false;
   bool _isScanning = false;
-  bool _isPermissionChecked = false;
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -46,70 +45,10 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) setState(() => _position = p);
     });
     _completeSub = _player.onPlayerComplete.listen((_) => _next());
-    _checkPermissionAndLoad();
-  }
-
-  Future<void> _checkPermissionAndLoad() async {
-    setState(() => _isPermissionChecked = false);
     
-    if (Platform.isAndroid) {
-      // Try to get storage permission (simpler approach)
-      PermissionStatus status = await Permission.storage.status;
-      
-      // If not granted, request it
-      if (!status.isGranted) {
-        status = await Permission.storage.request();
-      }
-      
-      // Also try audio permission
-      if (status.isGranted) {
-        await Permission.audio.request();
-      }
-      
-      // Check if we have permission
-      final isGranted = status.isGranted;
-      setState(() {
-        _hasPermission = isGranted;
-        _isPermissionChecked = true;
-      });
-      
-      if (isGranted) {
-        _load();
-      }
-    } else {
-      setState(() {
-        _hasPermission = true;
-        _isPermissionChecked = true;
-      });
-      _load();
-    }
-  }
-
-  void _showPermissionDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('⚠️ Storage Permission Required'),
-        content: const Text(
-          'App needs storage permission to access your music files.\n\n'
-          'Please allow storage permission to scan your songs.'
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              openAppSettings();
-            },
-            child: const Text('Open Settings'),
-          ),
-        ],
-      ),
-    );
+    // Directly load without permission check
+    _load();
+    setState(() => _isLoading = false);
   }
 
   Future<void> _load() async {
@@ -269,15 +208,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _addFolder() async {
-    // Check permission first
-    if (!_hasPermission) {
-      await _checkPermissionAndLoad();
-      if (!_hasPermission) {
-        _showPermissionDialog();
-        return;
-      }
-    }
-    
     try {
       final result = await FilePicker.platform.getDirectoryPath();
       if (result == null) return;
@@ -534,40 +464,6 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
     
-    if (!_isPermissionChecked) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(color: Colors.deepPurple),
-            SizedBox(height: 16),
-            Text('Checking permissions...', style: TextStyle(color: Colors.grey)),
-          ],
-        ),
-      );
-    }
-    
-    if (!_hasPermission) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.lock, size: 64, color: Colors.orange),
-            const SizedBox(height: 12),
-            const Text('Storage Permission Required', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 8),
-            const Text('Please allow storage permission to access your music.', textAlign: TextAlign.center),
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: _checkPermissionAndLoad,
-              icon: const Icon(Icons.settings),
-              label: const Text('Grant Permission'),
-            ),
-          ],
-        ),
-      );
-    }
-    
     if (_visibleSongs.isEmpty) {
       return Center(
         child: Column(
@@ -764,6 +660,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(color: Colors.deepPurple),
+        ),
+      );
+    }
+    
     return Scaffold(
       appBar: AppBar(
         title: TextField(
