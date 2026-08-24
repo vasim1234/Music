@@ -34,6 +34,19 @@ jobs:
         run: |
           sed -i '/<application/i \    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>\n    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>\n    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>' android/app/src/main/AndroidManifest.xml
 
+      - name: Enable Core Library Desugaring
+        run: |
+          cat << 'EOF' >> android/app/build.gradle
+          android {
+              compileOptions {
+                  coreLibraryDesugaringEnabled true
+              }
+          }
+          dependencies {
+              coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
+          }
+          EOF
+
       - name: Build New Version APK
         run: |
           cd android
