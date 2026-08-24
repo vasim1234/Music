@@ -64,6 +64,37 @@ jobs:
             echo "dependencies { coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4' }" >> android/app/build.gradle
           fi
 
+      - name: Force All Plugins to SDK 37
+        run: |
+          # Force all plugins to use SDK 37
+          find ~/.pub-cache/hosted/pub.dev/ -name "build.gradle" 2>/dev/null | while read -r file; do
+            # Fix compileSdkVersion
+            sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 37/g' "$file" 2>/dev/null || true
+            # Fix compileSdk (for newer syntax)
+            sed -i 's/compileSdk = [0-9]*/compileSdk = 37/g' "$file" 2>/dev/null || true
+            # Fix targetSdkVersion
+            sed -i 's/targetSdkVersion [0-9]*/targetSdkVersion 37/g' "$file" 2>/dev/null || true
+            # Fix targetSdk
+            sed -i 's/targetSdk = [0-9]*/targetSdk = 37/g' "$file" 2>/dev/null || true
+            # Fix minSdkVersion
+            sed -i 's/minSdkVersion [0-9]*/minSdkVersion 24/g' "$file" 2>/dev/null || true
+            # Fix minSdk
+            sed -i 's/minSdk = [0-9]*/minSdk = 24/g' "$file" 2>/dev/null || true
+          done
+          
+          # Also fix app/build.gradle
+          if [ -f "android/app/build.gradle" ]; then
+            sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 37/g' android/app/build.gradle
+            sed -i 's/targetSdkVersion [0-9]*/targetSdkVersion 37/g' android/app/build.gradle
+            sed -i 's/minSdkVersion [0-9]*/minSdkVersion 24/g' android/app/build.gradle
+          fi
+          
+          if [ -f "android/app/build.gradle.kts" ]; then
+            sed -i 's/compileSdk = [0-9]*/compileSdk = 37/g' android/app/build.gradle.kts
+            sed -i 's/targetSdk = [0-9]*/targetSdk = 37/g' android/app/build.gradle.kts
+            sed -i 's/minSdk = [0-9]*/minSdk = 24/g' android/app/build.gradle.kts
+          fi
+
       - name: Add Dependencies (with specific versions)
         run: |
           flutter pub add audioplayers:^6.0.0
