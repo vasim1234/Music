@@ -106,7 +106,6 @@ jobs:
             sed -i '/compileOptions {/a \        coreLibraryDesugaringEnabled true' android/app/build.gradle
             echo "dependencies { coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4' }" >> android/app/build.gradle
             
-            # Add namespace
             if ! grep -q "namespace" android/app/build.gradle; then
               sed -i '/android {/a \    namespace "com.example.music"' android/app/build.gradle
             fi
@@ -115,19 +114,23 @@ jobs:
             sed -i 's/targetSdk = .*/targetSdk = 36/g' android/app/build.gradle.kts || true
             sed -i 's/compileSdk = .*/compileSdk = 36/g' android/app/build.gradle.kts || true
             sed -i '/compileOptions {/a \        isCoreLibraryDesugaringEnabled = true' android/app/build.gradle.kts || true
-            echo "dependencies { coreLibraryDesugaring('com.android.tools:desugar_jdk_libs:2.0.4') }" >> android/app/build.gradle.kts || true
+            
+            # ✅ FIX: Use double quotes for Kotlin DSL
+            echo 'dependencies { coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4") }' >> android/app/build.gradle.kts || true
+            
+            if ! grep -q "namespace" android/app/build.gradle.kts; then
+              sed -i '/android {/a \    namespace = "com.example.music"' android/app/build.gradle.kts
+            fi
           fi
 
       - name: 5. Fix Namespace for Plugins
         run: |
-          # Fix file_picker namespace
           find ~/.pub-cache/hosted/pub.dev/file_picker-* -name "build.gradle" 2>/dev/null | while read -r file; do
             if ! grep -q "namespace" "$file"; then
               sed -i '/android {/a \    namespace "com.file_picker"' "$file"
             fi
           done
           
-          # Fix audioplayers_android namespace
           find ~/.pub-cache/hosted/pub.dev/audioplayers_android-* -name "build.gradle" 2>/dev/null | while read -r file; do
             if ! grep -q "namespace" "$file"; then
               sed -i '/android {/a \    namespace "com.audioplayers.android"' "$file"
@@ -486,7 +489,6 @@ jobs:
                 if (!_hasPermission) return;
               }
               try {
-                // ✅ FIXED: Use FilePicker.getDirectoryPath() without .platform
                 final result = await FilePicker.getDirectoryPath();
                 if (result == null) return;
                 final path = result;
