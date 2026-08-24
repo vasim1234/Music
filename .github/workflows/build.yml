@@ -70,10 +70,10 @@ jobs:
           flutter pub get
 
       - name: Build APK
-        run: flutter build apk --debug
+        run: flutter build apk --debug --suppress-analytics
       
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: 3D-Music-Player-Folder
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          path: build/app/outputs/flutter-apk/*.apk
