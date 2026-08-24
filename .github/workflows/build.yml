@@ -84,7 +84,6 @@ jobs:
                       }
                   }
                   
-                  // ✅ Add desugaring dependency inside subprojects
                   project.dependencies {
                       coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
                   }
@@ -492,7 +491,8 @@ jobs:
                 if (!_hasPermission) return;
               }
               try {
-                final result = await FilePicker.getDirectoryPath();
+                // ✅ FIX: Use FilePicker.platform.getDirectoryPath()
+                final result = await FilePicker.platform.getDirectoryPath();
                 if (result == null) return;
                 final path = result;
                 if (_folders.any((f) => f['path'] == path)) {
