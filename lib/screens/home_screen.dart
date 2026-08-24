@@ -81,10 +81,15 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _requestStorage() async {
     if (!Platform.isAndroid) return;
     try {
-      final sdkPermission = await Permission.audio.request();
-      if (!sdkPermission.isGranted) await Permission.storage.request();
-      final manage = await Permission.manageExternalStorage.status;
-      if (!manage.isGranted) await Permission.manageExternalStorage.request();
+      // Request all required permissions
+      final status = await Permission.storage.request();
+      final manageStatus = await Permission.manageExternalStorage.request();
+      final audioStatus = await Permission.audio.request();
+      
+      print("Storage: ${status.isGranted}");
+      print("Manage: ${manageStatus.isGranted}");
+      print("Audio: ${audioStatus.isGranted}");
+      
     } catch (e) { print("Permission error: $e"); }
     await _scan();
   }
@@ -93,13 +98,23 @@ class _HomeScreenState extends State<HomeScreen> {
     final result = <File>[];
     for (final folder in _folders.where((e) => e['enabled'] == true)) {
       final dir = Directory(folder['path'] as String);
-      if (!await dir.exists()) continue;
+      print("Scanning: ${folder['path']}");
+      if (!await dir.exists()) {
+        print("Directory not exists: ${folder['path']}");
+        continue;
+      }
       try {
         await for (final entity in dir.list(recursive: true, followLinks: false)) {
-          if (entity is File && _isAudio(entity.path)) result.add(entity);
+          if (entity is File && _isAudio(entity.path)) {
+            result.add(entity);
+            print("Found: ${entity.path}");
+          }
         }
-      } catch (_) {}
+      } catch (e) {
+        print("Error scanning: $e");
+      }
     }
+    print("Total songs found: ${result.length}");
     result.sort((a, b) => fileName(a.path).toLowerCase().compareTo(fileName(b.path).toLowerCase()));
     if (!mounted) return;
     setState(() { _songs..clear()..addAll(result); });
@@ -183,12 +198,25 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _addFolder() async {
     await _requestStorage();
     try {
-      final path = await FilePicker.platform.getDirectoryPath();
-      if (path == null) return;
-      if (_folders.any((f) => f['path'] == path)) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Folder already added.')));
+      // Use FilePicker.getDirectoryPath() with proper null check
+      final result = await FilePicker.platform.getDirectoryPath();
+      if (result == null) {
+        print("User cancelled folder selection");
         return;
       }
+      final path = result;
+      print("Selected folder: $path");
+      
+      // Check if folder already exists
+      if (_folders.any((f) => f['path'] == path)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Folder already added.')),
+          );
+        }
+        return;
+      }
+      
       setState(() {
         _folders.add({
           'name': path.split(Platform.pathSeparator).last,
@@ -196,9 +224,17 @@ class _HomeScreenState extends State<HomeScreen> {
           'enabled': true,
         });
       });
+      
       await _save();
       await _scan();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Added folder: ${path.split(Platform.pathSeparator).last}')),
+        );
+      }
     } catch (e) {
+      print("Folder error: $e");
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Folder error: $e')));
     }
@@ -680,6 +716,17 @@ class _HomeScreenState extends State<HomeScreen> {
               ListTile(
                 leading: const Icon(Icons.palette, color: Colors.pink),
                 title: const Text('Themes'),
+                onTap: () {},
+              ),
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.settings, color: Colors.grey),
+                title: const Text('Settings'),
+                onTap: () {},
+              ),
+              ListTile(
+                leading: const Icon(Icons.share, color: Colors.green),
+                title: const Text('Share App'),
                 onTap: () {},
               ),
             ],
