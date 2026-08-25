@@ -53,13 +53,43 @@ jobs:
         run: |
           flutter pub get
       
-      - name: Build APK using Gradle Directly
+      - name: Force file_picker to SDK 36
+        run: |
+          # Find file_picker build.gradle
+          FILE_PICKER_GRADLE=$(find ~/.pub-cache -name "build.gradle" -path "*file_picker*" 2>/dev/null | head -1)
+          
+          if [ -n "$FILE_PICKER_GRADLE" ]; then
+            echo "✅ Found file_picker at: $FILE_PICKER_GRADLE"
+            # Force SDK to 36
+            sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 36/g' "$FILE_PICKER_GRADLE"
+            sed -i 's/compileSdk = [0-9]*/compileSdk = 36/g' "$FILE_PICKER_GRADLE"
+            sed -i 's/targetSdkVersion [0-9]*/targetSdkVersion 36/g' "$FILE_PICKER_GRADLE"
+            sed -i 's/targetSdk = [0-9]*/targetSdk = 36/g' "$FILE_PICKER_GRADLE"
+            echo "✅ file_picker forced to SDK 36"
+          else
+            echo "⚠️ file_picker not found!"
+          fi
+          
+          # Also fix flutter_plugin_android_lifecycle
+          LIFECYCLE_GRADLE=$(find ~/.pub-cache -name "build.gradle" -path "*flutter_plugin_android_lifecycle*" 2>/dev/null | head -1)
+          if [ -n "$LIFECYCLE_GRADLE" ]; then
+            echo "✅ Found lifecycle at: $LIFECYCLE_GRADLE"
+            sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 36/g' "$LIFECYCLE_GRADLE"
+            echo "✅ lifecycle forced to SDK 36"
+          fi
+          
+          # Fix any other plugins
+          find ~/.pub-cache -name "build.gradle" -path "*/audioplayers_android*" 2>/dev/null | while read -r file; do
+            sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 36/g' "$file"
+            echo "✅ Fixed audioplayers_android"
+          done
+
+      - name: Build APK using Gradle
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
           cd ..
-          # Copy APK to expected location
           mkdir -p build/app/outputs/flutter-apk/
           cp android/app/build/outputs/apk/debug/app-debug.apk build/app/outputs/flutter-apk/app-debug.apk 2>/dev/null || echo "APK not found"
       
