@@ -39,6 +39,7 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription? _stateSub, _durationSub, _positionSub, _completeSub;
   bool _isScanning = false;
   bool _isLoading = true;
+  bool _hasPermission = false;
 
   late bool _isDarkMode;
 
@@ -59,8 +60,58 @@ class _HomeScreenState extends State<HomeScreen> {
     });
     _completeSub = _player.onPlayerComplete.listen((_) => _next());
     
+    _requestPermissions();
+  }
+
+  Future<void> _requestPermissions() async {
+    if (Platform.isAndroid) {
+      // Android 13+ needs READ_MEDIA_AUDIO
+      Map<Permission, PermissionStatus> statuses = await [
+        Permission.storage,
+        Permission.audio,
+        Permission.manageExternalStorage,
+      ].request();
+      
+      _hasPermission = statuses.values.any((s) => s.isGranted);
+      
+      // If not granted, request again with a dialog
+      if (!_hasPermission) {
+        _showPermissionDialog();
+        return;
+      }
+    } else {
+      _hasPermission = true;
+    }
+    
     _load();
     setState(() => _isLoading = false);
+  }
+
+  void _showPermissionDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('⚠️ Storage Permission Required'),
+        content: const Text(
+          'App needs storage permission to access your music files.\n\n'
+          'Please grant permission to scan your songs.'
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              openAppSettings();
+            },
+            child: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _toggleTheme() {
@@ -141,7 +192,11 @@ class _HomeScreenState extends State<HomeScreen> {
       try {
         final files = await _scanDirectorySafe(dir);
         result.addAll(files);
-      } catch (e) { continue; }
+        print("✅ Found ${files.length} songs in ${folder['path']}");
+      } catch (e) {
+        print("⚠️ Error scanning ${folder['path']}: $e");
+        continue;
+      }
     }
     result.sort((a, b) => fileName(a.path).toLowerCase().compareTo(fileName(b.path).toLowerCase()));
     if (!mounted) return;
@@ -150,6 +205,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _isScanning = false;
     });
     _filter(_search.text);
+    print("🎵 Total songs: ${_songs.length}");
   }
 
   bool _isAudio(String path) {
@@ -228,9 +284,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _addFolder() async {
     try {
+      // Request permission if not granted
+      if (!_hasPermission) {
+        await _requestPermissions();
+        if (!_hasPermission) {
+          _showPermissionDialog();
+          return;
+        }
+      }
+      
       final result = await FilePicker.platform.getDirectoryPath();
       if (result == null) return;
       final path = result;
+      print("📁 Selected folder: $path");
       
       if (_folders.any((f) => f['path'] == path)) {
         if (mounted) {
@@ -254,10 +320,11 @@ class _HomeScreenState extends State<HomeScreen> {
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('✅ Added: ${path.split(Platform.pathSeparator).last}')),
+          SnackBar(content: Text('✅ Added: ${path.split(Platform.pathSeparator).last} (${_songs.length} songs)')),
         );
       }
     } catch (e) {
+      print("❌ Folder error: $e");
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
@@ -800,7 +867,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         );
                       },
                     ),
-                    // 🌙 THEME TOGGLE - NEW!
+                    // 🌙 THEME TOGGLE
                     ListTile(
                       leading: Icon(
                         isDark ? Icons.dark_mode : Icons.light_mode,
