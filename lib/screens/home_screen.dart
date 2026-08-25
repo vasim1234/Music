@@ -3,6 +3,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/notification_service.dart';
 import 'equalizer_screen.dart'; 
@@ -349,10 +350,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ],
                   ),
                 ),
-                Container(
-                  margin: const EdgeInsets.all(30), height: 300, width: 300,
-                  decoration: BoxDecoration(shape: BoxShape.circle, gradient: const LinearGradient(colors: [Color(0xFF4C83FF), Color(0xFFD946EF)], begin: Alignment.topLeft, end: Alignment.bottomRight), boxShadow: [BoxShadow(color: Colors.purple.withOpacity(0.4), blurRadius: 30, spreadRadius: 10)]),
-                  child: const Icon(Icons.music_note, size: 130, color: Colors.white),
+                Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    AudioWaveWidget(isPlaying: isPlaying),
+                    Container(
+                      margin: const EdgeInsets.all(30), height: 260, width: 260,
+                      decoration: BoxDecoration(shape: BoxShape.circle, gradient: const LinearGradient(colors: [Color(0xFF4C83FF), Color(0xFFD946EF)], begin: Alignment.topLeft, end: Alignment.bottomRight), boxShadow: [BoxShadow(color: Colors.purple.withOpacity(0.4), blurRadius: 30, spreadRadius: 10)]),
+                      child: const Icon(Icons.music_note, size: 110, color: Colors.white),
+                    ),
+                  ],
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 30),
@@ -399,7 +406,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           bool playing = snapshot.data == PlayerState.playing || isPlaying;
                           return Container(
                             height: 75, width: 75, decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.purpleAccent),
-                            child: IconButton(iconSize: 45, color: Colors.white, icon: Icon(playing ? Icons.pause : Icons.play_arrow), onPressed: () async { playing ? await _player.pause() : await _player.resume(); }),
+                            child: IconButton(iconSize: 45, color: Colors.white, icon: Icon(playing ? Icons.pause : Icons.play_arrow), onPressed: () async { playing ? await _player.pause() : await _player.resume(); setModalState((){}); }),
                           );
                         }
                       ),
@@ -507,7 +514,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     title: const Text('Visualizer', style: TextStyle(fontWeight: FontWeight.w600)),
                     onTap: () {
                       Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Visualizer feature coming soon! 📊')));
+                      openFullScreenPlayer();
                     }
                   ),
                   
@@ -695,6 +702,68 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         selectedItemColor: Colors.black, unselectedItemColor: Colors.grey, showSelectedLabels: true, showUnselectedLabels: true,
         items: const [BottomNavigationBarItem(icon: Icon(Icons.headphones), label: "My music"), BottomNavigationBarItem(icon: Icon(Icons.play_circle_outline), label: "Watch")],
       ),
+    );
+  }
+}
+
+class AudioWaveWidget extends StatefulWidget {
+  final bool isPlaying;
+  const AudioWaveWidget({Key? key, required this.isPlaying}) : super(key: key);
+
+  @override
+  State<AudioWaveWidget> createState() => _AudioWaveWidgetState();
+}
+
+class _AudioWaveWidgetState extends State<AudioWaveWidget> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return SizedBox(
+          width: 320,
+          height: 320,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: List.generate(24, (index) {
+              double animValue = math.sin((_controller.value * 2 * math.pi) + (index * 0.4));
+              double height = widget.isPlaying ? 20 + (animValue.abs() * 110) : 10;
+              return Container(
+                width: 5,
+                height: height,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Colors.purpleAccent, Colors.cyanAccent],
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                  ),
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.purpleAccent.withOpacity(0.4),
+                      blurRadius: 4,
+                    )
+                  ],
+                ),
+              );
+            }),
+          ),
+        );
+      },
     );
   }
 }
