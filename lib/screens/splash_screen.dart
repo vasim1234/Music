@@ -3,7 +3,13 @@ import 'dart:async';
 import 'home_screen.dart';
 
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({Key? key}) : super(key: key);
+  final Function(bool) onThemeChanged;
+  final bool isDarkMode;
+  const SplashScreen({
+    super.key, 
+    required this.onThemeChanged, 
+    required this.isDarkMode
+  });
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
@@ -20,7 +26,14 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     _animation = Tween<double>(begin: 0.9, end: 1.1).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
 
     Timer(const Duration(milliseconds: 2500), () {
-      Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const HomeScreen()));
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => HomeScreen(
+            onThemeChanged: widget.onThemeChanged,
+            isDarkMode: widget.isDarkMode,
+          ),
+        ),
+      );
     });
   }
 
@@ -32,12 +45,16 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
+    final isDark = widget.isDarkMode;
+    
     return Scaffold(
       body: Container(
         width: double.infinity,
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFF0F172A), Color(0xFFD946EF)], 
+            colors: isDark 
+              ? [const Color(0xFF0F0F0F), const Color(0xFF1A1A1A)]
+              : [const Color(0xFF0F172A), const Color(0xFFD946EF)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -64,6 +81,33 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
             ),
             const SizedBox(height: 10),
             const Text("Feel The Rhythm", style: TextStyle(color: Colors.white70, fontSize: 16, letterSpacing: 1)),
+            const SizedBox(height: 30),
+            // Theme toggle on splash
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(30),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(isDark ? Icons.nightlight_round : Icons.wb_sunny, color: Colors.white, size: 20),
+                  const SizedBox(width: 10),
+                  Switch(
+                    value: widget.isDarkMode,
+                    onChanged: (value) {
+                      widget.onThemeChanged(value);
+                      setState(() {});
+                    },
+                    activeColor: Colors.deepPurple,
+                    inactiveThumbColor: Colors.grey,
+                  ),
+                  const SizedBox(width: 10),
+                  Text(isDark ? 'Dark' : 'Light', style: const TextStyle(color: Colors.white70)),
+                ],
+              ),
+            ),
           ],
         ),
       ),
