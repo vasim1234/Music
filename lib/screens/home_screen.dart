@@ -3,8 +3,13 @@ import 'package:permission_handler/permission_handler.dart';
 
 class HomeScreen extends StatefulWidget {
   final ValueChanged<bool>? onThemeChanged;
+  final bool? isDarkMode;
 
-  const HomeScreen({super.key, this.onThemeChanged});
+  const HomeScreen({
+    super.key, 
+    this.onThemeChanged, 
+    this.isDarkMode
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -37,8 +42,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Bhai Bhai App'),
-        backgroundColor: Colors.deepPurple,
+        title: const Text('BHAI BHAI APP'),
       ),
       body: Center(
         child: _permissionGranted

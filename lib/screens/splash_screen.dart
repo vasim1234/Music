@@ -5,6 +5,7 @@ import 'home_screen.dart';
 class SplashScreen extends StatefulWidget {
   final Function(bool) onThemeChanged;
   final bool isDarkMode;
+  
   const SplashScreen({
     super.key, 
     required this.onThemeChanged, 
@@ -26,14 +27,16 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     _animation = Tween<double>(begin: 0.9, end: 1.1).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
 
     Timer(const Duration(milliseconds: 2500), () {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => HomeScreen(
-            onThemeChanged: widget.onThemeChanged,
-            isDarkMode: widget.isDarkMode,
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => HomeScreen(
+              onThemeChanged: widget.onThemeChanged,
+              isDarkMode: widget.isDarkMode,
+            ),
           ),
-        ),
-      );
+        );
+      }
     });
   }
 
@@ -82,7 +85,6 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
             const SizedBox(height: 10),
             const Text("Feel The Rhythm", style: TextStyle(color: Colors.white70, fontSize: 16, letterSpacing: 1)),
             const SizedBox(height: 30),
-            // Theme toggle on splash
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               decoration: BoxDecoration(
@@ -98,7 +100,6 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                     value: widget.isDarkMode,
                     onChanged: (value) {
                       widget.onThemeChanged(value);
-                      setState(() {});
                     },
                     activeColor: Colors.deepPurple,
                     inactiveThumbColor: Colors.grey,
