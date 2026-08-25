@@ -1252,11 +1252,13 @@ jobs:
           }
           DART_EOF
 
-      - name: 7. Build APK (Fat 150MB Debug Build)
-        run: flutter build apk --debug
+      - name: 7. Build Dynamic APK
+        run: |
+          flutter build apk --debug --build-name=1.0.${{ github.run_number }} --build-number=${{ github.run_number }}
+          mv build/app/outputs/flutter-apk/app-debug.apk build/app/outputs/flutter-apk/MusicApp-Build-${{ github.run_number }}.apk
       
-      - name: 8. Upload APK
+      - name: 8. Upload Dynamic APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: 3D-Music-Player-Folder
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          name: MusicApp-Build-${{ github.run_number }}
+          path: build/app/outputs/flutter-apk/MusicApp-Build-${{ github.run_number }}.apk
