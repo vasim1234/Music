@@ -31,7 +31,6 @@ jobs:
       
       - name: Fix Android SDK, Desugaring & Force Plugins
         run: |
-          # Fix app/build.gradle
           if [ -f "android/app/build.gradle" ]; then
             sed -i 's/compileSdkVersion .*/compileSdkVersion 36/g' android/app/build.gradle
             sed -i 's/targetSdkVersion .*/targetSdkVersion 36/g' android/app/build.gradle
@@ -46,7 +45,6 @@ jobs:
             echo 'dependencies { coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4") }' >> android/app/build.gradle.kts
           fi
           
-          # ✅ FORCE ALL SUBPROJECTS TO SDK 36
           cat << 'EOF' >> android/build.gradle
 
           subprojects {
@@ -69,7 +67,10 @@ jobs:
           flutter pub get
       
       - name: Build APK
-        run: flutter build apk --debug
+        run: |
+          flutter build apk --debug
+          # Verify APK exists
+          ls -la build/app/outputs/flutter-apk/
       
       - name: Upload APK
         uses: actions/upload-artifact@v4
