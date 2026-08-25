@@ -685,7 +685,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     final appBarColor = isDark ? const Color(0xFF1A1A1A) : Colors.white;
     final hintColor = isDark ? Colors.grey.shade400 : Colors.grey;
-    final dividerColor = isDark ? Colors.grey.shade800 : Colors.grey.shade200;
     final iconColor = isDark ? Colors.white : Colors.black87;
     
     if (_isLoading) {
@@ -763,7 +762,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 5),
                     Text(
-                      '${_playlist.length} Local Tracks',
+                      '${_songs.length} Local Tracks',
                       style: const TextStyle(color: Colors.white70, fontSize: 14),
                     ),
                   ],
@@ -792,7 +791,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     const Divider(),
                     ListTile(
                       leading: Icon(Icons.equalizer, color: Colors.orange),
-                      title: const Text('Equalizer & Effects', style: TextStyle(fontWeight: FontWeight.w600)),
+                      title: const Text('Equalizer', style: TextStyle(fontWeight: FontWeight.w600)),
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.push(
@@ -866,8 +865,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       bottomNavigationBar: NavigationBar(
         backgroundColor: appBarColor,
-        selectedItemColor: iconColor,
-        unselectedItemColor: isDark ? Colors.grey.shade600 : Colors.grey,
         destinations: const [
           NavigationDestination(icon: Icon(Icons.headphones), label: 'My Music'),
           NavigationDestination(icon: Icon(Icons.play_circle_outline), label: 'Watch'),
