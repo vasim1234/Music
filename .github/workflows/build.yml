@@ -5,6 +5,10 @@ on:
     branches: [ "main" ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -29,7 +33,7 @@ jobs:
           flutter create . --platforms=android --project-name=music
           flutter clean
       
-      - name: Fix Android SDK, Desugaring & Force Plugins
+      - name: Fix Android SDK & Desugaring
         run: |
           if [ -f "android/app/build.gradle" ]; then
             sed -i 's/compileSdkVersion .*/compileSdkVersion 36/g' android/app/build.gradle
@@ -67,10 +71,7 @@ jobs:
           flutter pub get
       
       - name: Build APK
-        run: |
-          flutter build apk --debug
-          # Verify APK exists
-          ls -la build/app/outputs/flutter-apk/
+        run: flutter build apk --debug
       
       - name: Upload APK
         uses: actions/upload-artifact@v4
