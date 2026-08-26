@@ -38,7 +38,7 @@ class NotificationService {
     required String artist,
     required bool isPlaying,
   }) async {
-    // ✅ Use AndroidBitmap.fromString() for icon
+    // ✅ CORRECT WAY - WITHOUT AndroidBitmap
     final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
       'music_player_channel',
       'Music Player',
@@ -46,30 +46,30 @@ class NotificationService {
       importance: Importance.high,
       priority: Priority.high,
       ongoing: true,
-      icon: AndroidBitmap.fromString('@mipmap/ic_launcher'),
+      icon: '@mipmap/ic_launcher',
       actions: <AndroidNotificationAction>[
         AndroidNotificationAction(
           'previous',
           '⏮️ Prev',
-          icon: AndroidBitmap.fromString('ic_skip_previous'),
+          icon: 'ic_skip_previous',  // ✅ Direct String
           showsUserInterface: true,
         ),
         AndroidNotificationAction(
           'play_pause',
           isPlaying ? '⏸️ Pause' : '▶️ Play',
-          icon: AndroidBitmap.fromString(isPlaying ? 'ic_pause' : 'ic_play_arrow'),
+          icon: isPlaying ? 'ic_pause' : 'ic_play_arrow',  // ✅ Direct String
           showsUserInterface: true,
         ),
         AndroidNotificationAction(
           'next',
           '⏭️ Next',
-          icon: AndroidBitmap.fromString('ic_skip_next'),
+          icon: 'ic_skip_next',  // ✅ Direct String
           showsUserInterface: true,
         ),
         AndroidNotificationAction(
           'close',
           '⏹️ Close',
-          icon: AndroidBitmap.fromString('ic_close'),
+          icon: 'ic_close',  // ✅ Direct String
           showsUserInterface: true,
         ),
       ],
