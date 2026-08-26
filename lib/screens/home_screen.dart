@@ -582,6 +582,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
     await _saveData();
   }
+  Future<String?> _extractAlbumArt(String audioPath) async {
+    try {
+      if (_albumArtCache.containsKey(audioPath)) {
+        return _albumArtCache[audioPath];
+      }
+
+      final tags = await AudioTags.read(audioPath);
+      final art = tags?.art;
+
+      if (art != null && art.isNotEmpty) {
+        final dir = await getApplicationDocumentsDirectory();
+        final fileName = "${audioPath.split('/').last.replaceAll(RegExp(r'\.[^.]+$'), '')}.jpg";
+        final savedImagePath = '${dir.path}/$fileName';
+        
+        File imageFile = File(savedImagePath);
+        await imageFile.writeAsBytes(art);
+
+        setState(() {
+          _albumArtCache[audioPath] = savedImagePath;
+        });
+        await _saveAlbumArtCache();
+
+        return savedImagePath;
+      }
+    } catch (e) {
+      print('Error extracting album art: $e');
+    }
+    return null;
+  }
 
   // ========== DEFAULT ART WIDGETS ==========
   
