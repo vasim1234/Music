@@ -551,15 +551,15 @@ jobs:
                 }
 
                 final tags = await AudioTags.read(audioPath);
-                final art = tags?.art;
+                final art = tags?.picture;
 
-                if (art != null && art.isNotEmpty) {
+                if (art != null && art.bytes.isNotEmpty) {
                   final dir = await getApplicationDocumentsDirectory();
-                  final fileName = "${audioPath.split('/').last.replaceAll(RegExp(r'\.[^.]+$'), '')}.jpg";
-                  final savedImagePath = '${dir.path}/$fileName';
-                  
+                  final ext = art.mimeType.contains('png') ? 'png' : 'jpg';
+                  final fileName = "${audioPath.split('/').last.replaceAll(RegExp(r'\.[^.]+$'), '')}.$ext";
+                  final savedImagePath = '${dir.path}/$fileName'
                   File imageFile = File(savedImagePath);
-                  await imageFile.writeAsBytes(art);
+                  await imageFile.writeAsBytes(art.bytes);
 
                   setState(() {
                     _albumArtCache[audioPath] = savedImagePath;
