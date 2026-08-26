@@ -36,7 +36,7 @@ jobs:
           flutter pub add file_picker:^8.0.0
           flutter pub add permission_handler:^11.3.1
           flutter pub add shared_preferences:^2.2.2 
-          flutter pub add flutter_local_notifications:^17.1.2
+          flutter pub add flutter_local_notifications:^16.0.0
           flutter pub add on_audio_query:^2.9.0
           flutter pub get
       
@@ -97,23 +97,7 @@ jobs:
           }
           GRADLE_EOF
 
-      - name: 4. Fix on_audio_query Namespace Issue
-        run: |
-          # Find the on_audio_query_android package in pub cache
-          ON_AUDIO_PATH=$(find ~/.pub-cache -path "*/on_audio_query_android-*/android" -type d 2>/dev/null | head -1)
-          
-          if [ -n "$ON_AUDIO_PATH" ] && [ -f "$ON_AUDIO_PATH/build.gradle" ]; then
-            echo "✅ Found on_audio_query_android at: $ON_AUDIO_PATH"
-            
-            # Add namespace to the package's build.gradle
-            sed -i '/android {/a \    namespace "com.example.on_audio_query_android"' "$ON_AUDIO_PATH/build.gradle"
-            
-            echo "✅ Added namespace to on_audio_query_android"
-          else
-            echo "⚠️ on_audio_query_android not found, continuing..."
-          fi
-
-      - name: 5. Inject Permissions & Fix Desugaring Error
+      - name: 4. Inject Permissions & Fix Desugaring Error
         run: |
           if [ -f "android/app/build.gradle" ]; then
             sed -i 's/compileSdkVersion 34/compileSdkVersion 34/g' android/app/build.gradle
@@ -132,6 +116,18 @@ jobs:
           <uses-permission android:name="android.permission.WAKE_LOCK" />\
           <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\
           ' android/app/src/main/AndroidManifest.xml
+
+      - name: 5. Fix on_audio_query Namespace Issue
+        run: |
+          ON_AUDIO_PATH=$(find ~/.pub-cache -path "*/on_audio_query_android-*/android" -type d 2>/dev/null | head -1)
+          
+          if [ -n "$ON_AUDIO_PATH" ] && [ -f "$ON_AUDIO_PATH/build.gradle" ]; then
+            echo "✅ Found on_audio_query_android at: $ON_AUDIO_PATH"
+            sed -i '/android {/a \    namespace "com.example.on_audio_query_android"' "$ON_AUDIO_PATH/build.gradle"
+            echo "✅ Added namespace to on_audio_query_android"
+          else
+            echo "⚠️ on_audio_query_android not found, continuing..."
+          fi
 
       - name: 6. Create Notification, Splash, and Equalizer Screens
         run: |
@@ -238,7 +234,6 @@ jobs:
           }
           EOF
           
-          # Create notification icons
           mkdir -p android/app/src/main/res/drawable
           
           cat > android/app/src/main/res/drawable/ic_play_arrow.xml << 'XML_EOF'
@@ -608,7 +603,6 @@ jobs:
               super.initState();
               WidgetsBinding.instance.addObserver(this);
               
-              // Notification Callbacks
               NotificationService.onPlayPause = () {
                 if (isPlaying) {
                   _player.pause();
