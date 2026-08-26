@@ -36,8 +36,7 @@ jobs:
           flutter pub add file_picker:^8.0.0
           flutter pub add permission_handler:^11.3.1
           flutter pub add shared_preferences:^2.2.2 
-          flutter pub add flutter_local_notifications:^17.2.4
-          flutter pub add on_audio_query:^2.9.0
+          flutter pub add flutter_local_notifications:^17.1.2
           flutter pub get
       
       - name: 3. The Stable Brahmaastra (Fix JVM)
@@ -65,10 +64,10 @@ jobs:
               afterEvaluate { project ->
                   if (project.hasProperty('android')) {
                       project.android {
-                          compileSdkVersion 34
+                          compileSdkVersion 36
                           defaultConfig {
                               minSdkVersion 24
-                              targetSdkVersion 34
+                              targetSdkVersion 36
                           }
                           compileOptions {
                               sourceCompatibility JavaVersion.VERSION_17
@@ -97,14 +96,20 @@ jobs:
           }
           GRADLE_EOF
 
-      - name: 4. Inject Permissions & Fix Desugaring Error
+      - name: 4. Inject Permissions & Fix Desugaring Error (Smart Detect)
         run: |
           if [ -f "android/app/build.gradle" ]; then
-            sed -i 's/compileSdkVersion 34/compileSdkVersion 34/g' android/app/build.gradle
-            sed -i 's/targetSdkVersion 34/targetSdkVersion 34/g' android/app/build.gradle
+            sed -i 's/compileSdkVersion 34/compileSdkVersion 36/g' android/app/build.gradle
+            sed -i 's/targetSdkVersion 34/targetSdkVersion 36/g' android/app/build.gradle
             sed -i 's/minSdkVersion 21/minSdkVersion 24/g' android/app/build.gradle
-            sed -i '/compileOptions {/a \        coreLibraryDesugaringEnabled true' android/app/build.gradle
-            sed -i '/dependencies {/a \    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.0.4"' android/app/build.gradle
+            sed -i '/compileOptions {/a \ coreLibraryDesugaringEnabled true' android/app/build.gradle
+            echo "dependencies { coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4' }" >> android/app/build.gradle
+          elif [ -f "android/app/build.gradle.kts" ]; then
+            sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 24/g' android/app/build.gradle.kts || true
+            sed -i 's/targetSdk = flutter.targetSdkVersion/targetSdk = 36/g' android/app/build.gradle.kts || true
+            sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/g' android/app/build.gradle.kts || true
+            sed -i '/compileOptions {/a \ isCoreLibraryDesugaringEnabled = true' android/app/build.gradle.kts || true
+            echo 'dependencies { coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4") }' >> android/app/build.gradle.kts
           fi
 
           sed -i 's/<application/<application android:requestLegacyExternalStorage="true"/g' android/app/src/main/AndroidManifest.xml
@@ -117,55 +122,19 @@ jobs:
           <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\
           ' android/app/src/main/AndroidManifest.xml
 
-      - name: 5. Fix on_audio_query Namespace Issue
-        run: |
-          ON_AUDIO_PATH=$(find ~/.pub-cache -path "*/on_audio_query_android-*/android" -type d 2>/dev/null | head -1)
-          
-          if [ -n "$ON_AUDIO_PATH" ] && [ -f "$ON_AUDIO_PATH/build.gradle" ]; then
-            echo "✅ Found on_audio_query_android at: $ON_AUDIO_PATH"
-            sed -i '/android {/a \    namespace "com.example.on_audio_query_android"' "$ON_AUDIO_PATH/build.gradle"
-            echo "✅ Added namespace to on_audio_query_android"
-          else
-            echo "⚠️ on_audio_query_android not found, continuing..."
-          fi
-
-      - name: 6. Create Notification, Splash, and Equalizer Screens
+      - name: 5. Create Notification, Splash, and Equalizer Screens
         run: |
           mkdir -p lib/services
           cat > lib/services/notification_service.dart << 'EOF'
           import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-          import 'package:flutter/material.dart';
 
           class NotificationService {
             static final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
-            static int _notificationId = 1;
-            
-            static VoidCallback? onPlayPause;
-            static VoidCallback? onNext;
-            static VoidCallback? onPrevious;
-            static VoidCallback? onClose;
 
             static Future<void> initialize() async {
               const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
               const InitializationSettings settings = InitializationSettings(android: androidSettings);
-              await _notifications.initialize(settings, onDidReceiveNotificationResponse: _handleNotificationResponse);
-            }
-
-            static void _handleNotificationResponse(NotificationResponse response) {
-              switch (response.payload) {
-                case 'play_pause':
-                  onPlayPause?.call();
-                  break;
-                case 'next':
-                  onNext?.call();
-                  break;
-                case 'previous':
-                  onPrevious?.call();
-                  break;
-                case 'close':
-                  onClose?.call();
-                  break;
-              }
+              await _notifications.initialize(settings);
             }
 
             static Future<void> showNowPlayingNotification({
@@ -173,103 +142,31 @@ jobs:
               required String artist,
               required bool isPlaying,
             }) async {
-              final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+              const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
                 'music_player_channel',
                 'Music Player',
                 channelDescription: 'Now playing music controls',
-                importance: Importance.high,
+                importance: Importance.low,
                 priority: Priority.high,
                 ongoing: true,
-                icon: const AndroidBitmap.fromString('@mipmap/ic_launcher'),
-                actions: <AndroidNotificationAction>[
-                  AndroidNotificationAction(
-                    'previous',
-                    '⏮️ Prev',
-                    icon: const AndroidBitmap.fromString('ic_skip_previous'),
-                    showsUserInterface: true,
-                  ),
-                  AndroidNotificationAction(
-                    'play_pause',
-                    isPlaying ? '⏸️ Pause' : '▶️ Play',
-                    icon: const AndroidBitmap.fromString(isPlaying ? 'ic_pause' : 'ic_play_arrow'),
-                    showsUserInterface: true,
-                  ),
-                  AndroidNotificationAction(
-                    'next',
-                    '⏭️ Next',
-                    icon: const AndroidBitmap.fromString('ic_skip_next'),
-                    showsUserInterface: true,
-                  ),
-                  AndroidNotificationAction(
-                    'close',
-                    '⏹️ Close',
-                    icon: const AndroidBitmap.fromString('ic_close'),
-                    showsUserInterface: true,
-                  ),
-                ],
+                icon: '@mipmap/ic_launcher',
               );
 
-              final NotificationDetails details = NotificationDetails(android: androidDetails);
+              const NotificationDetails details = NotificationDetails(android: androidDetails);
 
               await _notifications.show(
-                _notificationId++,
-                isPlaying ? '▶️ Now Playing: $title' : '⏸️ Paused: $title',
+                0,
+                isPlaying ? '▶️ Playing: $title' : '⏸️ Paused: $title',
                 artist,
                 details,
-                payload: 'now_playing',
-              );
-            }
-
-            static Future<void> updatePlayPauseButton(bool isPlaying, String title, String artist) async {
-              await showNowPlayingNotification(
-                title: title,
-                artist: artist,
-                isPlaying: isPlaying,
               );
             }
 
             static Future<void> cancelNotification() async {
-              await _notifications.cancelAll();
+              await _notifications.cancel(0);
             }
           }
           EOF
-          
-          mkdir -p android/app/src/main/res/drawable
-          
-          cat > android/app/src/main/res/drawable/ic_play_arrow.xml << 'XML_EOF'
-          <vector xmlns:android="http://schemas.android.com/apk/res/android"
-              android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-            <path android:fillColor="#FFFFFF" android:pathData="M8,5v14l11,-7z"/>
-          </vector>
-          XML_EOF
-          
-          cat > android/app/src/main/res/drawable/ic_pause.xml << 'XML_EOF'
-          <vector xmlns:android="http://schemas.android.com/apk/res/android"
-              android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-            <path android:fillColor="#FFFFFF" android:pathData="M6,19h4V5H6v14zm8-14v14h4V5h-4z"/>
-          </vector>
-          XML_EOF
-          
-          cat > android/app/src/main/res/drawable/ic_skip_next.xml << 'XML_EOF'
-          <vector xmlns:android="http://schemas.android.com/apk/res/android"
-              android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-            <path android:fillColor="#FFFFFF" android:pathData="M6,18l8.5,-6L6,6v12zM16,6v12h2V6h-2z"/>
-          </vector>
-          XML_EOF
-          
-          cat > android/app/src/main/res/drawable/ic_skip_previous.xml << 'XML_EOF'
-          <vector xmlns:android="http://schemas.android.com/apk/res/android"
-              android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-            <path android:fillColor="#FFFFFF" android:pathData="M6,6h2v12H6zm3.5,6l8.5,6V6z"/>
-          </vector>
-          XML_EOF
-          
-          cat > android/app/src/main/res/drawable/ic_close.xml << 'XML_EOF'
-          <vector xmlns:android="http://schemas.android.com/apk/res/android"
-              android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-            <path android:fillColor="#FFFFFF" android:pathData="M19,6.41L17.59,5 12,10.59 6.41,5 5,6.41 10.59,12 5,17.59 6.41,19 12,13.41 17.59,19 19,17.59 13.41,12z"/>
-          </vector>
-          XML_EOF
           
           mkdir -p lib/screens
           cat > lib/screens/splash_screen.dart << 'EOF'
@@ -534,7 +431,7 @@ jobs:
           }
           EOF
 
-      - name: 7. Inject Main and Home Screen Code
+      - name: 6. Inject Main and Home Screen Code
         run: |
           cat > lib/main.dart << 'MAIN_EOF'
           import 'package:flutter/material.dart';
@@ -602,24 +499,6 @@ jobs:
             void initState() {
               super.initState();
               WidgetsBinding.instance.addObserver(this);
-              
-              NotificationService.onPlayPause = () {
-                if (isPlaying) {
-                  _player.pause();
-                } else {
-                  _player.resume();
-                }
-              };
-              NotificationService.onNext = playNext;
-              NotificationService.onPrevious = playPrevious;
-              NotificationService.onClose = () {
-                _player.stop();
-                setState(() {
-                  _currentIndex = -1;
-                  isPlaying = false;
-                });
-                NotificationService.cancelNotification();
-              };
               
               _player.onDurationChanged.listen((d) => setState(() => _duration = d));
               _player.onPositionChanged.listen((p) => setState(() => _position = p));
@@ -915,105 +794,82 @@ jobs:
                   builder: (context, setModalState) {
                     return Container(
                       height: MediaQuery.of(context).size.height * 0.95,
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [Color(0xFF0F172A), Color(0xFF1E1B4B)], 
-                          begin: Alignment.topCenter, 
-                          end: Alignment.bottomCenter
-                        ), 
-                        borderRadius: BorderRadius.vertical(top: Radius.circular(30))
-                      ),
-                      child: SafeArea(
-                        child: Column(
-                          children: [
-                            const SizedBox(height: 10),
-                            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white30, borderRadius: BorderRadius.circular(10))),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  IconButton(icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white, size: 30), onPressed: () => Navigator.pop(context)),
-                                  const Text("Now Playing", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                                  IconButton(icon: Icon(is3DOn ? Icons.surround_sound : Icons.surround_sound_outlined, color: is3DOn ? Colors.purpleAccent : Colors.white, size: 30), onPressed: () { toggle3D(); setModalState((){}); }),
-                                ],
-                              ),
+                      decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF0F172A), Color(0xFF1E1B4B)], begin: Alignment.topCenter, end: Alignment.bottomCenter), borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
+                      child: Column(
+                        children: [
+                          const SizedBox(height: 15),
+                          Container(width: 50, height: 5, decoration: BoxDecoration(color: Colors.grey.shade600, borderRadius: BorderRadius.circular(10))),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                IconButton(icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white, size: 30), onPressed: () => Navigator.pop(context)),
+                                const Text("Now Playing", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                                IconButton(icon: Icon(is3DOn ? Icons.surround_sound : Icons.surround_sound_outlined, color: is3DOn ? Colors.purpleAccent : Colors.white, size: 30), onPressed: () { toggle3D(); setModalState((){}); }),
+                              ],
                             ),
-                            Expanded(
-                              child: Center(
-                                child: Container(
-                                  height: 250, width: 250,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle, 
-                                    gradient: const LinearGradient(colors: [Color(0xFF4C83FF), Color(0xFFD946EF)], begin: Alignment.topLeft, end: Alignment.bottomRight), 
-                                    boxShadow: [BoxShadow(color: Colors.purple.withOpacity(0.4), blurRadius: 30, spreadRadius: 5)]
+                          ),
+                          Container(
+                            margin: const EdgeInsets.all(30), height: 300, width: 300,
+                            decoration: BoxDecoration(shape: BoxShape.circle, gradient: const LinearGradient(colors: [Color(0xFF4C83FF), Color(0xFFD946EF)], begin: Alignment.topLeft, end: Alignment.bottomRight), boxShadow: [BoxShadow(color: Colors.purple.withOpacity(0.4), blurRadius: 30, spreadRadius: 10)]),
+                            child: const Icon(Icons.music_note, size: 130, color: Colors.white),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 30),
+                            child: Column(
+                              children: [
+                                Text(getFileName(_filteredPlaylist[_currentIndex].path), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 8),
+                                const Text("Local Audio", maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.grey, fontSize: 16)),
+                              ],
+                            ),
+                          ),
+                          const Spacer(),
+                          StreamBuilder<Duration>(
+                            stream: _player.onPositionChanged,
+                            builder: (context, snapshot) {
+                              Duration pos = snapshot.data ?? _position;
+                              return Column(
+                                children: [
+                                  SliderTheme(
+                                    data: SliderThemeData(trackHeight: 4, activeTrackColor: Colors.purpleAccent, inactiveTrackColor: Colors.white24, thumbColor: Colors.white, overlayColor: Colors.purpleAccent.withOpacity(0.2)),
+                                    child: Slider(
+                                      min: 0, max: _duration.inSeconds.toDouble() > 0 ? _duration.inSeconds.toDouble() : 1.0, value: pos.inSeconds.toDouble().clamp(0.0, _duration.inSeconds.toDouble() > 0 ? _duration.inSeconds.toDouble() : 1.0),
+                                      onChanged: (value) async { await _player.seek(Duration(seconds: value.toInt())); },
+                                    ),
                                   ),
-                                  child: const Icon(Icons.music_note, size: 100, color: Colors.white),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 25),
+                                    child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(formatTime(pos), style: const TextStyle(color: Colors.white54)), Text(formatTime(_duration), style: const TextStyle(color: Colors.white54))]),
+                                  ),
+                                ]
+                              );
+                            }
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 50, top: 15),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              children: [
+                                IconButton(icon: Icon(_favorites.contains(_filteredPlaylist[_currentIndex].path) ? Icons.favorite : Icons.favorite_border, color: _favorites.contains(_filteredPlaylist[_currentIndex].path) ? Colors.deepPurpleAccent : Colors.white54, size: 28), onPressed: () { toggleFavorite(_filteredPlaylist[_currentIndex].path); setModalState((){}); setState((){}); }),
+                                IconButton(iconSize: 45, color: Colors.white, icon: const Icon(Icons.skip_previous), onPressed: () { playPrevious(); setModalState((){}); }),
+                                StreamBuilder<PlayerState>(
+                                  stream: _player.onPlayerStateChanged,
+                                  builder: (context, snapshot) {
+                                    bool playing = snapshot.data == PlayerState.playing || isPlaying;
+                                    return Container(
+                                      height: 75, width: 75, decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.purpleAccent),
+                                      child: IconButton(iconSize: 45, color: Colors.white, icon: Icon(playing ? Icons.pause : Icons.play_arrow), onPressed: () async { playing ? await _player.pause() : await _player.resume(); }),
+                                    );
+                                  }
                                 ),
-                              ),
+                                IconButton(iconSize: 45, color: Colors.white, icon: const Icon(Icons.skip_next), onPressed: () { playNext(); setModalState((){}); }),
+                                IconButton(icon: const Icon(Icons.playlist_add, color: Colors.white54, size: 28), onPressed: () => addToPlaylist(_filteredPlaylist[_currentIndex].path)),
+                              ],
                             ),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 10),
-                              child: Column(
-                                children: [
-                                  Text(getFileName(_filteredPlaylist[_currentIndex].path), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-                                  const SizedBox(height: 6),
-                                  const Text("Local Audio", maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.grey, fontSize: 14)),
-                                ],
-                              ),
-                            ),
-                            StreamBuilder<Duration>(
-                              stream: _player.onPositionChanged,
-                              builder: (context, snapshot) {
-                                Duration pos = snapshot.data ?? _position;
-                                double maxSec = _duration.inSeconds.toDouble();
-                                double currentSec = pos.inSeconds.toDouble();
-                                if (maxSec <= 0) maxSec = 1.0;
-                                currentSec = currentSec.clamp(0.0, maxSec);
-
-                                return Column(
-                                  children: [
-                                    SliderTheme(
-                                      data: SliderThemeData(trackHeight: 4, activeTrackColor: Colors.purpleAccent, inactiveTrackColor: Colors.white24, thumbColor: Colors.white, overlayColor: Colors.purpleAccent.withOpacity(0.2)),
-                                      child: Slider(
-                                        min: 0, 
-                                        max: maxSec, 
-                                        value: currentSec,
-                                        onChanged: (value) async { await _player.seek(Duration(seconds: value.toInt())); },
-                                      ),
-                                    ),
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 25),
-                                      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(formatTime(pos), style: const TextStyle(color: Colors.white54)), Text(formatTime(_duration), style: const TextStyle(color: Colors.white54))]),
-                                    ),
-                                  ]
-                                );
-                              }
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 30, top: 15),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                                children: [
-                                  IconButton(icon: Icon(_favorites.contains(_filteredPlaylist[_currentIndex].path) ? Icons.favorite : Icons.favorite_border, color: _favorites.contains(_filteredPlaylist[_currentIndex].path) ? Colors.deepPurpleAccent : Colors.white54, size: 28), onPressed: () { toggleFavorite(_filteredPlaylist[_currentIndex].path); setModalState((){}); setState((){}); }),
-                                  IconButton(iconSize: 45, color: Colors.white, icon: const Icon(Icons.skip_previous), onPressed: () { playPrevious(); setModalState((){}); }),
-                                  StreamBuilder<PlayerState>(
-                                    stream: _player.onPlayerStateChanged,
-                                    builder: (context, snapshot) {
-                                      bool playing = snapshot.data == PlayerState.playing || isPlaying;
-                                      return Container(
-                                        height: 65, width: 65, decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.purpleAccent),
-                                        child: IconButton(iconSize: 40, color: Colors.white, icon: Icon(playing ? Icons.pause : Icons.play_arrow), onPressed: () async { playing ? await _player.pause() : await _player.resume(); }),
-                                      );
-                                    }
-                                  ),
-                                  IconButton(iconSize: 45, color: Colors.white, icon: const Icon(Icons.skip_next), onPressed: () { playNext(); setModalState((){}); }),
-                                  IconButton(icon: const Icon(Icons.playlist_add, color: Colors.white54, size: 28), onPressed: () => addToPlaylist(_filteredPlaylist[_currentIndex].path)),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     );
                   },
@@ -1396,11 +1252,12 @@ jobs:
           }
           DART_EOF
 
-      - name: 8. Build APK
-        run: flutter build apk --debug --no-tree-shake-icons
+      - name: 7. Build APK (Fat 150MB Debug Build)
+        run: flutter build apk --debug
       
-      - name: 9. Upload APK
+      - name: 8. Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: 3D-Music-Player-Folder
           path: build/app/outputs/flutter-apk/app-debug.apk
+          
