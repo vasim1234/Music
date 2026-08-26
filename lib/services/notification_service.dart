@@ -1,10 +1,10 @@
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
-  static int _notificationId = 1;
-  
+  static const int _notificationId = 1;
+
   static VoidCallback? onPlayPause;
   static VoidCallback? onNext;
   static VoidCallback? onPrevious;
@@ -13,11 +13,15 @@ class NotificationService {
   static Future<void> initialize() async {
     const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const InitializationSettings settings = InitializationSettings(android: androidSettings);
-    await _notifications.initialize(settings, onDidReceiveNotificationResponse: _handleNotificationResponse);
+
+    await _notifications.initialize(
+      settings,
+      onDidReceiveNotificationResponse: _handleNotificationResponse,
+    );
   }
 
   static void _handleNotificationResponse(NotificationResponse response) {
-    switch (response.payload) {
+    switch (response.actionId) {
       case 'play_pause':
         onPlayPause?.call();
         break;
@@ -38,7 +42,6 @@ class NotificationService {
     required String artist,
     required bool isPlaying,
   }) async {
-    // ✅ CORRECT WAY - WITHOUT AndroidBitmap
     final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
       'music_player_channel',
       'Music Player',
@@ -46,30 +49,30 @@ class NotificationService {
       importance: Importance.high,
       priority: Priority.high,
       ongoing: true,
-      icon: '@mipmap/ic_launcher',
+      icon: const AndroidBitmap.fromString('@mipmap/ic_launcher'),
       actions: <AndroidNotificationAction>[
-        AndroidNotificationAction(
+        const AndroidNotificationAction(
           'previous',
           '⏮️ Prev',
-          icon: 'ic_skip_previous',  // ✅ Direct String
+          icon: AndroidBitmap.fromString('ic_skip_previous'),
           showsUserInterface: true,
         ),
         AndroidNotificationAction(
           'play_pause',
           isPlaying ? '⏸️ Pause' : '▶️ Play',
-          icon: isPlaying ? 'ic_pause' : 'ic_play_arrow',  // ✅ Direct String
+          icon: AndroidBitmap.fromString(isPlaying ? 'ic_pause' : 'ic_play_arrow'),
           showsUserInterface: true,
         ),
-        AndroidNotificationAction(
+        const AndroidNotificationAction(
           'next',
           '⏭️ Next',
-          icon: 'ic_skip_next',  // ✅ Direct String
+          icon: AndroidBitmap.fromString('ic_skip_next'),
           showsUserInterface: true,
         ),
-        AndroidNotificationAction(
+        const AndroidNotificationAction(
           'close',
           '⏹️ Close',
-          icon: 'ic_close',  // ✅ Direct String
+          icon: AndroidBitmap.fromString('ic_close'),
           showsUserInterface: true,
         ),
       ],
@@ -78,19 +81,10 @@ class NotificationService {
     final NotificationDetails details = NotificationDetails(android: androidDetails);
 
     await _notifications.show(
-      _notificationId++,
+      _notificationId,
       isPlaying ? '▶️ Now Playing: $title' : '⏸️ Paused: $title',
       artist,
       details,
-      payload: 'now_playing',
-    );
-  }
-
-  static Future<void> updatePlayPauseButton(bool isPlaying, String title, String artist) async {
-    await showNowPlayingNotification(
-      title: title,
-      artist: artist,
-      isPlaying: isPlaying,
     );
   }
 
