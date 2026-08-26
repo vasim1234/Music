@@ -58,3 +58,30 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
+
+@override
+void initState() {
+  super.initState();
+  WidgetsBinding.instance.addObserver(this);
+  
+  // Set notification callbacks
+  NotificationService.onPlayPause = () {
+    if (isPlaying) {
+      _player.pause();
+    } else {
+      _player.resume();
+    }
+  };
+  NotificationService.onNext = playNext;
+  NotificationService.onPrevious = playPrevious;
+  NotificationService.onClose = () {
+    _player.stop();
+    setState(() {
+      _currentIndex = -1;
+      isPlaying = false;
+    });
+    NotificationService.cancelNotification();
+  };
+  
+  // Rest of your initState code...
+}
