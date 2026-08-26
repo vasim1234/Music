@@ -4,6 +4,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:audiotags/audiotags.dart';
+import 'package:path_provider/path_provider.dart';
 import '../services/notification_service.dart';
 import 'equalizer_screen.dart';
 
@@ -46,6 +48,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
 
+  // ✅ Album art cache
+  Map<String, String> _albumArtCache = {};
+
   @override
   void initState() {
     super.initState();
@@ -81,6 +86,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     _loadData();
     _checkPermission();
+    _loadAlbumArtCache(); // ✅ Load album art cache
   }
 
   @override
@@ -99,6 +105,100 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         artist: "Bhai Bhai App",
         isPlaying: isPlaying,
       );
+    }
+  }
+
+  // ========== ALBUM ART METHODS ==========
+  
+  // ✅ Load album art cache
+  Future<void> _loadAlbumArtCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final prefsData = prefs.getString('album_art_cache');
+      if (prefsData != null) {
+        final Map<String, dynamic> decoded = {};
+        final pairs = prefsData.split(',').where((s) => s.isNotEmpty);
+        for (var pair in pairs) {
+          final parts = pair.split('|||');
+          if (parts.length == 2) {
+            decoded[parts[0]] = parts[1];
+          }
+        }
+        setState(() {
+          _albumArtCache = Map<String, String>.from(decoded.cast<String, String>());
+        });
+      }
+    } catch (e) {
+      print('Error loading album art cache: $e');
+    }
+  }
+
+  // ✅ Save album art cache
+  Future<void> _saveAlbumArtCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final encoded = _albumArtCache.entries.map((e) => '${e.key}|||${e.value}').join(',');
+      await prefs.setString('album_art_cache', encoded);
+    } catch (e) {
+      print('Error saving album art cache: $e');
+    }
+  }
+
+  // ✅ Extract album art from audio file
+  Future<String?> _extractAlbumArt(String filePath) async {
+    try {
+      // Check cache first
+      if (_albumArtCache.containsKey(filePath)) {
+        final cachedPath = _albumArtCache[filePath]!;
+        if (File(cachedPath).existsSync()) {
+          return cachedPath;
+        }
+      }
+
+      // Read audio tags
+      final tags = await AudioTags.read(filePath);
+      final art = tags.art;
+
+      if (art != null && art.isNotEmpty) {
+        // Save image to app directory
+        final dir = await getApplicationDocumentsDirectory();
+        final fileName = filePath.split('/').last.replaceAll(RegExp(r'\.[^.]*$'), '') + '.jpg';
+        final imagePath = '${dir.path}/$fileName';
+        
+        File imageFile = File(imagePath);
+        await imageFile.writeAsBytes(art);
+
+        // Add to cache
+        setState(() {
+          _albumArtCache[filePath] = imagePath;
+        });
+        await _saveAlbumArtCache();
+
+        return imagePath;
+      }
+    } catch (e) {
+      print('Error extracting album art: $e');
+    }
+    return null;
+  }
+
+  // ✅ Get album art with caching
+  Future<String?> getAlbumArt(String filePath) async {
+    try {
+      // Check memory cache
+      if (_albumArtCache.containsKey(filePath)) {
+        final cachedPath = _albumArtCache[filePath]!;
+        if (File(cachedPath).existsSync()) {
+          return cachedPath;
+        }
+      }
+
+      // Extract from file
+      final artPath = await _extractAlbumArt(filePath);
+      return artPath;
+    } catch (e) {
+      print('Error getting album art: $e');
+      return null;
     }
   }
 
@@ -483,9 +583,62 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _saveData();
   }
 
+  // ========== DEFAULT ART WIDGETS ==========
+  
+  Widget _defaultAlbumArt({double size = 44}) {
+    return Container(
+      height: size,
+      width: size,
+      decoration: BoxDecoration(
+        color: Colors.grey.shade300,
+        borderRadius: BorderRadius.circular(size / 2),
+      ),
+      child: Icon(Icons.music_note, color: Colors.white, size: size * 0.5),
+    );
+  }
+
+  Widget _defaultLargeAlbumArt() {
+    return Container(
+      height: 280,
+      width: 280,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: const LinearGradient(
+          colors: [Color(0xFF4C83FF), Color(0xFFD946EF)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: const Icon(Icons.music_note, size: 100, color: Colors.white),
+    );
+  }
+
+  Widget _buildAlbumArt(String path, {double size = 44}) {
+    return FutureBuilder<String?>(
+      future: getAlbumArt(path),
+      builder: (context, snapshot) {
+        if (snapshot.hasData && snapshot.data != null) {
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(size / 2),
+            child: Image.file(
+              File(snapshot.data!),
+              height: size,
+              width: size,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) => _defaultAlbumArt(size: size),
+            ),
+          );
+        }
+        return _defaultAlbumArt(size: size);
+      },
+    );
+  }
+
   // ========== FULL SCREEN PLAYER ==========
   void openFullScreenPlayer() {
     if (_currentIndex == -1 || _filteredPlaylist.isEmpty) return;
+    String currentPath = _filteredPlaylist[_currentIndex].path;
+    
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -541,36 +694,43 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ],
                     ),
                   ),
-                  Expanded(
-                    child: Center(
-                      child: Container(
-                        height: 250,
-                        width: 250,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF4C83FF), Color(0xFFD946EF)],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
+                  // ✅ Album Art - Large
+                  FutureBuilder<String?>(
+                    future: getAlbumArt(currentPath),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasData && snapshot.data != null) {
+                        return Container(
+                          height: 280,
+                          width: 280,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.purple.withOpacity(0.3),
+                                blurRadius: 40,
+                                spreadRadius: 10,
+                              ),
+                            ],
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.purple.withOpacity(0.4),
-                              blurRadius: 30,
-                              spreadRadius: 5,
-                            )
-                          ],
-                        ),
-                        child: const Icon(Icons.music_note, size: 100, color: Colors.white),
-                      ),
-                    ),
+                          child: ClipOval(
+                            child: Image.file(
+                              File(snapshot.data!),
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) => _defaultLargeAlbumArt(),
+                            ),
+                          ),
+                        );
+                      }
+                      return _defaultLargeAlbumArt();
+                    },
                   ),
+                  const SizedBox(height: 20),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 30),
                     child: Column(
                       children: [
                         Text(
-                          getFileName(_filteredPlaylist[_currentIndex].path),
+                          getFileName(currentPath),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -638,16 +798,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       children: [
                         IconButton(
                           icon: Icon(
-                            _favorites.contains(_filteredPlaylist[_currentIndex].path)
+                            _favorites.contains(currentPath)
                                 ? Icons.favorite
                                 : Icons.favorite_border,
-                            color: _favorites.contains(_filteredPlaylist[_currentIndex].path)
+                            color: _favorites.contains(currentPath)
                                 ? Colors.deepPurpleAccent
                                 : Colors.white54,
                             size: 28,
                           ),
                           onPressed: () {
-                            toggleFavorite(_filteredPlaylist[_currentIndex].path);
+                            toggleFavorite(currentPath);
                             setModalState(() {});
                             setState(() {});
                           },
@@ -694,7 +854,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         ),
                         IconButton(
                           icon: const Icon(Icons.playlist_add, color: Colors.white54, size: 28),
-                          onPressed: () => addToPlaylist(_filteredPlaylist[_currentIndex].path),
+                          onPressed: () => addToPlaylist(currentPath),
                         ),
                       ],
                     ),
@@ -711,6 +871,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // ========== MINI PLAYER ==========
   Widget buildMiniPlayer() {
     if (_currentIndex < 0 || _filteredPlaylist.isEmpty) return const SizedBox.shrink();
+    String currentPath = _filteredPlaylist[_currentIndex].path;
+    
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
@@ -722,13 +884,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-        leading: const CircleAvatar(
-          radius: 22,
-          backgroundColor: Colors.black87,
-          child: Icon(Icons.music_note, color: Colors.white),
-        ),
+        leading: _buildAlbumArt(currentPath, size: 44),
         title: Text(
-          getFileName(_filteredPlaylist[_currentIndex].path),
+          getFileName(currentPath),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
@@ -1400,18 +1558,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: ListTile(
-                                  leading: Container(
-                                    height: 40,
-                                    width: 40,
-                                    decoration: BoxDecoration(
-                                      color: isCurrent ? Colors.deepPurple : Colors.grey.shade200,
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Icon(
-                                      Icons.music_note,
-                                      color: isCurrent ? Colors.white : Colors.grey,
-                                    ),
-                                  ),
+                                  leading: _buildAlbumArt(path, size: 40),
                                   title: Text(
                                     getFileName(path),
                                     maxLines: 1,
@@ -1518,18 +1665,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: ListTile(
-                            leading: Container(
-                              height: 50,
-                              width: 50,
-                              decoration: BoxDecoration(
-                                color: isCurrent ? Colors.deepPurple : Colors.grey.shade200,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Icon(
-                                Icons.music_note,
-                                color: isCurrent ? Colors.white : Colors.grey,
-                              ),
-                            ),
+                            leading: _buildAlbumArt(path, size: 50),
                             title: Text(
                               getFileName(path),
                               maxLines: 1,
