@@ -5,7 +5,6 @@ class NotificationService {
   static final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
   static int _notificationId = 1;
   
-  // Callbacks for notification actions
   static VoidCallback? onPlayPause;
   static VoidCallback? onNext;
   static VoidCallback? onPrevious;
@@ -38,8 +37,8 @@ class NotificationService {
     required String title,
     required String artist,
     required bool isPlaying,
-    String? albumArt,
   }) async {
+    // ✅ Use AndroidBitmap.fromString() for icon
     final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
       'music_player_channel',
       'Music Player',
@@ -47,30 +46,30 @@ class NotificationService {
       importance: Importance.high,
       priority: Priority.high,
       ongoing: true,
-      icon: '@mipmap/ic_launcher',
+      icon: AndroidBitmap.fromString('@mipmap/ic_launcher'),
       actions: <AndroidNotificationAction>[
         AndroidNotificationAction(
           'previous',
           '⏮️ Prev',
-          icon: 'ic_skip_previous',
+          icon: AndroidBitmap.fromString('ic_skip_previous'),
           showsUserInterface: true,
         ),
         AndroidNotificationAction(
           'play_pause',
           isPlaying ? '⏸️ Pause' : '▶️ Play',
-          icon: isPlaying ? 'ic_pause' : 'ic_play_arrow',
+          icon: AndroidBitmap.fromString(isPlaying ? 'ic_pause' : 'ic_play_arrow'),
           showsUserInterface: true,
         ),
         AndroidNotificationAction(
           'next',
           '⏭️ Next',
-          icon: 'ic_skip_next',
+          icon: AndroidBitmap.fromString('ic_skip_next'),
           showsUserInterface: true,
         ),
         AndroidNotificationAction(
           'close',
           '⏹️ Close',
-          icon: 'ic_close',
+          icon: AndroidBitmap.fromString('ic_close'),
           showsUserInterface: true,
         ),
       ],
@@ -88,7 +87,6 @@ class NotificationService {
   }
 
   static Future<void> updatePlayPauseButton(bool isPlaying, String title, String artist) async {
-    // Update notification with new play/pause state
     await showNowPlayingNotification(
       title: title,
       artist: artist,
