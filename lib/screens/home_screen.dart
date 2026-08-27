@@ -157,7 +157,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       // Read audio tags
       final tags = await AudioTags.read(filePath);
-      final art = tags?.picture
+      final art = tags?.art;
 
       if (art != null && art.isNotEmpty) {
         // Save image to app directory
