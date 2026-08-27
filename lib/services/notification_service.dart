@@ -5,10 +5,17 @@ class NotificationService {
   static final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
   static const int _notificationId = 1;
 
-  static VoidCallback? onPlayPause;
-  static VoidCallback? onNext;
-  static VoidCallback? onPrevious;
-  static VoidCallback? onClose;
+  // Private callback variables
+  static VoidCallback? _onPlayPause;
+  static VoidCallback? _onNext;
+  static VoidCallback? _onPrevious;
+  static VoidCallback? _onClose;
+
+  // Explicit Setters to fix the setter not found error
+  static set onPlayPause(VoidCallback? callback) => _onPlayPause = callback;
+  static set onNext(VoidCallback? callback) => _onNext = callback;
+  static set onPrevious(VoidCallback? callback) => _onPrevious = callback;
+  static set onClose(VoidCallback? callback) => _onClose = callback;
 
   static Future<void> initialize() async {
     const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -23,16 +30,16 @@ class NotificationService {
   static void _handleNotificationResponse(NotificationResponse response) {
     switch (response.actionId) {
       case 'play_pause':
-        onPlayPause?.call();
+        _onPlayPause?.call();
         break;
       case 'next':
-        onNext?.call();
+        _onNext?.call();
         break;
       case 'previous':
-        onPrevious?.call();
+        _onPrevious?.call();
         break;
       case 'close':
-        onClose?.call();
+        _onClose?.call();
         break;
     }
   }
