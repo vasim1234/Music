@@ -11,6 +11,19 @@ class NotificationService {
   static VoidCallback? _onPrevious;
   static VoidCallback? _onClose;
 
+  // SetCallbacks method to safely assign functions from HomeScreen
+  static void setCallbacks({
+    VoidCallback? onPlayPause,
+    VoidCallback? onNext,
+    VoidCallback? onPrevious,
+    VoidCallback? onClose,
+  }) {
+    _onPlayPause = onPlayPause;
+    _onNext = onNext;
+    _onPrevious = onPrevious;
+    _onClose = onClose;
+  }
+
   // Explicit Getters and Setters
   static VoidCallback? get onPlayPause => _onPlayPause;
   static set onPlayPause(VoidCallback? callback) => _onPlayPause = callback;
