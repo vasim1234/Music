@@ -11,7 +11,7 @@ class NotificationService {
   static VoidCallback? _onPrevious;
   static VoidCallback? _onClose;
 
-  // Explicit Getters and Setters to fix the setter not found error
+  // Explicit Getters and Setters
   static VoidCallback? get onPlayPause => _onPlayPause;
   static set onPlayPause(VoidCallback? callback) => _onPlayPause = callback;
 
