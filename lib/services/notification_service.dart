@@ -1,45 +1,36 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/material.dart';
 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
-  static const int _notificationId = 1;
-
-  // Private callback variables
-  static VoidCallback? _onPlayPause;
-  static VoidCallback? _onNext;
-  static VoidCallback? _onPrevious;
-  static VoidCallback? _onClose;
-
-  // Explicit Setters to fix the setter not found error
-  static set onPlayPause(VoidCallback? callback) => _onPlayPause = callback;
-  static set onNext(VoidCallback? callback) => _onNext = callback;
-  static set onPrevious(VoidCallback? callback) => _onPrevious = callback;
-  static set onClose(VoidCallback? callback) => _onClose = callback;
+  static int _notificationId = 1;
+  
+  // Callbacks
+  static VoidCallback? onPlayPause;
+  static VoidCallback? onNext;
+  static VoidCallback? onPrevious;
+  static VoidCallback? onClose;
 
   static Future<void> initialize() async {
     const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const InitializationSettings settings = InitializationSettings(android: androidSettings);
-
-    await _notifications.initialize(
-      settings,
-      onDidReceiveNotificationResponse: _handleNotificationResponse,
-    );
+    await _notifications.initialize(settings, onDidReceiveNotificationResponse: _handleNotificationResponse);
   }
 
   static void _handleNotificationResponse(NotificationResponse response) {
+    // FIXED: response.payload ki jagah response.actionId use hoga kyunki actions ki ID wahi aati hai
     switch (response.actionId) {
       case 'play_pause':
-        _onPlayPause?.call();
+        onPlayPause?.call();
         break;
       case 'next':
-        _onNext?.call();
+        onNext?.call();
         break;
       case 'previous':
-        _onPrevious?.call();
+        onPrevious?.call();
         break;
       case 'close':
-        _onClose?.call();
+        onClose?.call();
         break;
     }
   }
@@ -56,7 +47,7 @@ class NotificationService {
       importance: Importance.high,
       priority: Priority.high,
       ongoing: true,
-      icon: const AndroidBitmap.fromString('@mipmap/ic_launcher'),
+      icon: '@mipmap/ic_launcher',
       actions: <AndroidNotificationAction>[
         const AndroidNotificationAction(
           'previous',
@@ -92,6 +83,15 @@ class NotificationService {
       isPlaying ? '▶️ Now Playing: $title' : '⏸️ Paused: $title',
       artist,
       details,
+      payload: 'now_playing',
+    );
+  }
+
+  static Future<void> updatePlayPauseButton(bool isPlaying, String title, String artist) async {
+    await showNowPlayingNotification(
+      title: title,
+      artist: artist,
+      isPlaying: isPlaying,
     );
   }
 
