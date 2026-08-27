@@ -144,7 +144,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  // Extract album art from audio file
+  // Extract album art safely
   Future<String?> _extractAlbumArt(String filePath) async {
     try {
       if (_albumArtCache.containsKey(filePath)) {
@@ -154,23 +154,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         }
       }
 
-      final tags = await AudioTags.read(filePath);
-      final art = tags?.art;
-
-      if (art != null && art.isNotEmpty) {
+      final Tag? tags = await AudioTags.read(filePath);
+      if (tags != null && tags.pictures.isNotEmpty) {
+        final pictureBytes = tags.pictures.first.bytes;
         final dir = await getApplicationDocumentsDirectory();
-        final fileName = filePath.split('/').last.replaceAll(RegExp(r'\.[^.]*$'), '') + '.jpg';
-        final imagePath = '${dir.path}/$fileName';
+        final fileName = '${filePath.hashCode}.jpg';
+        final savedImagePath = '${dir.path}/$fileName';
         
-        File imageFile = File(imagePath);
-        await imageFile.writeAsBytes(art);
+        File imageFile = File(savedImagePath);
+        await imageFile.writeAsBytes(pictureBytes);
 
         setState(() {
-          _albumArtCache[filePath] = imagePath;
+          _albumArtCache[filePath] = savedImagePath;
         });
         await _saveAlbumArtCache();
 
-        return imagePath;
+        return savedImagePath;
       }
     } catch (e) {
       print('Error extracting album art: $e');
@@ -595,9 +594,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return Container(
       height: 280,
       width: 280,
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         shape: BoxShape.circle,
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           colors: [Color(0xFF4C83FF), Color(0xFFD946EF)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -1949,4 +1948,3 @@ class _FolderManagerScreenState extends State<FolderManagerScreen> {
     );
   }
 }
-
