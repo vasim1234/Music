@@ -5,11 +5,24 @@ class NotificationService {
   static final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
   static int _notificationId = 1;
   
-  // Callbacks
-  static VoidCallback? onPlayPause;
-  static VoidCallback? onNext;
-  static VoidCallback? onPrevious;
-  static VoidCallback? onClose;
+  // Private callback variables
+  static VoidCallback? _onPlayPause;
+  static VoidCallback? _onNext;
+  static VoidCallback? _onPrevious;
+  static VoidCallback? _onClose;
+
+  // Explicit Getters and Setters to fix the setter not found error
+  static VoidCallback? get onPlayPause => _onPlayPause;
+  static set onPlayPause(VoidCallback? callback) => _onPlayPause = callback;
+
+  static VoidCallback? get onNext => _onNext;
+  static set onNext(VoidCallback? callback) => _onNext = callback;
+
+  static VoidCallback? get onPrevious => _onPrevious;
+  static set onPrevious(VoidCallback? callback) => _onPrevious = callback;
+
+  static VoidCallback? get onClose => _onClose;
+  static set onClose(VoidCallback? callback) => _onClose = callback;
 
   static Future<void> initialize() async {
     const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -18,19 +31,18 @@ class NotificationService {
   }
 
   static void _handleNotificationResponse(NotificationResponse response) {
-    // FIXED: response.payload ki jagah response.actionId use hoga kyunki actions ki ID wahi aati hai
     switch (response.actionId) {
       case 'play_pause':
-        onPlayPause?.call();
+        _onPlayPause?.call();
         break;
       case 'next':
-        onNext?.call();
+        _onNext?.call();
         break;
       case 'previous':
-        onPrevious?.call();
+        _onPrevious?.call();
         break;
       case 'close':
-        onClose?.call();
+        _onClose?.call();
         break;
     }
   }
