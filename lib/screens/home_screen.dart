@@ -48,7 +48,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
 
-  // ✅ Album art cache
+  // Album art cache
   Map<String, String> _albumArtCache = {};
 
   @override
@@ -56,7 +56,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    // ✅ NOTIFICATION CALLBACKS
+    // NOTIFICATION CALLBACKS
     NotificationService.onPlayPause = () {
       if (isPlaying) {
         _player.pause();
@@ -86,7 +86,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     _loadData();
     _checkPermission();
-    _loadAlbumArtCache(); // ✅ Load album art cache
+    _loadAlbumArtCache();
   }
 
   @override
@@ -96,7 +96,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  // ✅ UPDATE LOCK SCREEN CONTROLS
+  // UPDATE LOCK SCREEN CONTROLS
   void _updateLockScreenControls() {
     if (_currentIndex >= 0 && _filteredPlaylist.isNotEmpty) {
       String songName = getFileName(_filteredPlaylist[_currentIndex].path);
@@ -110,7 +110,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // ========== ALBUM ART METHODS ==========
   
-  // ✅ Load album art cache
+  // Load album art cache
   Future<void> _loadAlbumArtCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -133,7 +133,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  // ✅ Save album art cache
+  // Save album art cache
   Future<void> _saveAlbumArtCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -144,10 +144,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  // ✅ Extract album art from audio file
+  // Extract album art from audio file
   Future<String?> _extractAlbumArt(String filePath) async {
     try {
-      // Check cache first
       if (_albumArtCache.containsKey(filePath)) {
         final cachedPath = _albumArtCache[filePath]!;
         if (File(cachedPath).existsSync()) {
@@ -155,12 +154,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         }
       }
 
-      // Read audio tags
       final tags = await AudioTags.read(filePath);
       final art = tags?.art;
 
       if (art != null && art.isNotEmpty) {
-        // Save image to app directory
         final dir = await getApplicationDocumentsDirectory();
         final fileName = filePath.split('/').last.replaceAll(RegExp(r'\.[^.]*$'), '') + '.jpg';
         final imagePath = '${dir.path}/$fileName';
@@ -168,7 +165,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         File imageFile = File(imagePath);
         await imageFile.writeAsBytes(art);
 
-        // Add to cache
         setState(() {
           _albumArtCache[filePath] = imagePath;
         });
@@ -182,10 +178,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return null;
   }
 
-  // ✅ Get album art with caching
+  // Get album art with caching
   Future<String?> getAlbumArt(String filePath) async {
     try {
-      // Check memory cache
       if (_albumArtCache.containsKey(filePath)) {
         final cachedPath = _albumArtCache[filePath]!;
         if (File(cachedPath).existsSync()) {
@@ -193,7 +188,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         }
       }
 
-      // Extract from file
       final artPath = await _extractAlbumArt(filePath);
       return artPath;
     } catch (e) {
@@ -582,35 +576,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
     await _saveData();
   }
-  Future<String?> _extractAlbumArt(String audioPath) async {
-    try {
-      if (_albumArtCache.containsKey(audioPath)) {
-        return _albumArtCache[audioPath];
-      }
-
-      final tags = await AudioTags.read(audioPath);
-      final art = tags?.art;
-
-      if (art != null && art.isNotEmpty) {
-        final dir = await getApplicationDocumentsDirectory();
-        final fileName = "${audioPath.split('/').last.replaceAll(RegExp(r'\.[^.]+$'), '')}.jpg";
-        final savedImagePath = '${dir.path}/$fileName';
-        
-        File imageFile = File(savedImagePath);
-        await imageFile.writeAsBytes(art);
-
-        setState(() {
-          _albumArtCache[audioPath] = savedImagePath;
-        });
-        await _saveAlbumArtCache();
-
-        return savedImagePath;
-      }
-    } catch (e) {
-      print('Error extracting album art: $e');
-    }
-    return null;
-  }
 
   // ========== DEFAULT ART WIDGETS ==========
   
@@ -723,7 +688,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ],
                     ),
                   ),
-                  // ✅ Album Art - Large
+                  // Album Art - Large
                   FutureBuilder<String?>(
                     future: getAlbumArt(currentPath),
                     builder: (context, snapshot) {
@@ -962,7 +927,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // ========== BUILD METHOD ==========
   @override
   Widget build(BuildContext context) {
-    // Agar permission nahi hai toh permission screen dikhao
     if (!_hasPermission) {
       return Scaffold(
         backgroundColor: Colors.white,
@@ -1013,7 +977,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
     }
 
-    // Main App - Permission granted
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -1986,3 +1949,4 @@ class _FolderManagerScreenState extends State<FolderManagerScreen> {
     );
   }
 }
+
