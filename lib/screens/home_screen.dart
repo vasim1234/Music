@@ -1949,4 +1949,4 @@ class _FolderManagerScreenState extends State<FolderManagerScreen> {
       ),
     );
   }
-} 
+}
