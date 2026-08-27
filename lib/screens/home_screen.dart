@@ -55,25 +55,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-
-    // NOTIFICATION CALLBACKS
-    NotificationService.onPlayPause = () {
-      if (isPlaying) {
-        _player.pause();
-      } else {
-        _player.resume();
-      }
-    };
-    NotificationService.onNext = playNext;
-    NotificationService.onPrevious = playPrevious;
-    NotificationService.onClose = () {
-      _player.stop();
-      setState(() {
-        _currentIndex = -1;
-        isPlaying = false;
-      });
-      NotificationService.cancelNotification();
-    };
+    
+        // NOTIFICATION CALLBACKS
+    NotificationService.setCallbacks(
+      onPlayPause: () {
+        if (isPlaying) {
+          _player.pause();
+        } else {
+          _player.resume();
+        }
+      },
+      onNext: playNext,
+      onPrevious: playPrevious,
+      onClose: () {
+        _player.stop();
+        setState(() {
+          _currentIndex = -1;
+          isPlaying = false;
+        });
+        NotificationService.cancelNotification();
+      },
+    );
 
     // Player Listeners
     _player.onDurationChanged.listen((d) => setState(() => _duration = d));
