@@ -1,0 +1,16 @@
+android {
+    ...
+    defaultConfig {
+        applicationId "com.example.bhaibhai"
+        minSdkVersion flutter.minSdkVersion
+        targetSdkVersion flutter.targetSdkVersion
+        versionCode flutterVersionCode.toInteger()
+        versionName flutterVersionName
+
+        // 👇 Ye 3 line yahan dalni hai 👇
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+    }
+}
+
