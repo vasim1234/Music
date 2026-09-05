@@ -1,4 +1,0 @@
-git add .
-git commit -m "Build: Auto create android folder via workflow"
-git push origin main
-
