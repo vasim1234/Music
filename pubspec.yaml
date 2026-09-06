@@ -9,11 +9,18 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  
+
+  # Audio & File Handling
   audioplayers: ^6.0.0
+  audiotags: ^0.5.0
   file_picker: ^8.0.0
+  path_provider: ^2.1.4
+
+  # Permissions & Storage
   permission_handler: ^11.3.1
   shared_preferences: ^2.2.2
+
+  # Notifications
   flutter_local_notifications: ^17.1.2
 
 dev_dependencies:
