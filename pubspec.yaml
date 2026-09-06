@@ -1,32 +1,63 @@
-name: music_player
-description: A local music player app
-publish_to: 'none'
-version: 1.0.0+1
+name: Build APK
 
-environment:
-  sdk: ">=3.0.0 <4.0.0"
+on:
+  push:
+    branches: [ main ]
 
-dependencies:
-  flutter:
-    sdk: flutter
-
-  # Audio & File Handling
-  audioplayers: ^6.0.0
-  audiotags: ^1.4.2        # ✅ CORRECT VERSION (was 0.5.0)
-  file_picker: ^8.0.0
-  path_provider: ^2.1.4
-
-  # Permissions & Storage
-  permission_handler: ^11.3.1
-  shared_preferences: ^2.2.2
-
-  # Notifications
-  flutter_local_notifications: ^17.1.2
-
-dev_dependencies:
-  flutter_test:
-    sdk: flutter
-  flutter_lints: ^4.0.0
-
-flutter:
-  uses-material-design: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+      
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.6'
+          channel: 'stable'
+      
+      - name: Fix Package Name
+        run: |
+          echo "Fixing package name: Music -> music"
+          sed -i 's/name: Music/name: music/g' pubspec.yaml
+          echo "✅ Package name fixed!"
+      
+      - name: Recreate Android Folder
+        run: |
+          echo "Deleting empty android folder..."
+          rm -rf android
+          
+          echo "Let Flutter create a brand new Android project..."
+          flutter create --platforms=android .
+          
+          echo "Adding Storage Permissions back..."
+          cat >> android/app/src/main/AndroidManifest.xml << 'EOFPERM'
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    EOFPERM
+          
+          echo "✅ BRAND NEW ANDROID FOLDER CREATED WITH V2 EMBEDDING!"
+      
+      - name: Get Dependencies
+        run: flutter pub get
+      
+      - name: Build APK
+        run: flutter build apk --release
+      
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release
+          path: build/app/outputs/flutter-apk/app-release.apk
