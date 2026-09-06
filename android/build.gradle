@@ -1,10 +1,9 @@
 buildscript {
-    ext.kotlin_version = '1.9.24'  // ✅ FIX 2: 1.7.1 → 1.9.0
+    ext.kotlin_version = '1.9.24'
     repositories {
         google()
         mavenCentral()
     }
-
     dependencies {
         classpath 'com.android.tools.build:gradle:7.4.2'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
@@ -18,12 +17,19 @@ allprojects {
     }
 }
 
-rootProject.buildDir = '../build'
+// 💥 SABHI PACKAGES KO FORCE FIX KARNE KA TARKEEB
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
-}
-subprojects {
     project.evaluationDependsOn(':app')
+
+    afterEvaluate { project ->
+        if (project.hasProperty('android')) {
+            project.android {
+                compileSdkVersion 34
+                buildToolsVersion "34.0.0"
+            }
+        }
+    }
 }
 
 tasks.register('clean', Delete) {
