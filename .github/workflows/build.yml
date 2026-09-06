@@ -11,6 +11,15 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Clear Flutter Cache
+        run: |
+          echo "🧹 Clearing Flutter cache..."
+          flutter clean
+          rm -rf ~/.pub-cache
+          echo "✅ Cache cleared!"
       
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -23,6 +32,49 @@ jobs:
         with:
           flutter-version: '3.19.6'
           channel: 'stable'
+      
+      # ✅ FORCE FIX: Overwrite pubspec.yaml with correct name
+      - name: Force Fix Package Name
+        run: |
+          echo "🔧 Force fixing package name in pubspec.yaml..."
+          
+          # Show current content
+          echo "📋 Current pubspec.yaml first line:"
+          head -1 pubspec.yaml
+          
+          # Directly overwrite the file with correct content
+          cat > pubspec.yaml << 'EOF'
+          name: music
+          description: A local music player app
+          publish_to: 'none'
+          version: 1.0.0+1
+          
+          environment:
+            sdk: ">=3.0.0 <4.0.0"
+          
+          dependencies:
+            flutter:
+              sdk: flutter
+            audioplayers: ^6.0.0
+            audiotags: ^1.4.2
+            file_picker: ^8.0.0
+            path_provider: ^2.1.4
+            permission_handler: ^11.3.1
+            shared_preferences: ^2.2.2
+            flutter_local_notifications: ^17.1.2
+          
+          dev_dependencies:
+            flutter_test:
+              sdk: flutter
+            flutter_lints: ^4.0.0
+          
+          flutter:
+            uses-material-design: true
+          EOF
+          
+          echo "✅ pubspec.yaml overwritten with correct name!"
+          echo "📋 First line now:"
+          head -1 pubspec.yaml
       
       - name: Recreate Android Folder
         run: |
@@ -37,6 +89,8 @@ jobs:
       - name: Add Storage Permissions
         run: |
           echo "Adding permissions to AndroidManifest.xml..."
+          
+          # Use sed to insert permissions after <manifest> tag
           sed -i '/<manifest /a\
           \    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>\
           \    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>\
