@@ -76,9 +76,9 @@ jobs:
           
           echo "✅ Android folder created!"
       
-      - name: Fix app/build.gradle completely
+      - name: Fix app/build.gradle with namespace
         run: |
-          echo "🔧 Overwriting app/build.gradle..."
+          echo "🔧 Overwriting app/build.gradle with namespace..."
           cat > android/app/build.gradle << 'EOF'
           def localProperties = new Properties()
           def localPropertiesFile = rootProject.file('local.properties')
@@ -108,17 +108,22 @@ jobs:
           apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
           
           android {
+              namespace "com.yourcompany.yourapp"
               compileSdkVersion 34
+          
               compileOptions {
                   sourceCompatibility JavaVersion.VERSION_1_8
                   targetCompatibility JavaVersion.VERSION_1_8
               }
+          
               kotlinOptions {
                   jvmTarget = '1.8'
               }
+          
               sourceSets {
                   main.java.srcDirs += 'src/main/kotlin'
               }
+          
               defaultConfig {
                   applicationId 'com.yourcompany.yourapp'
                   minSdkVersion 21
@@ -126,6 +131,7 @@ jobs:
                   versionCode flutterVersionCode.toInteger()
                   versionName flutterVersionName
               }
+          
               buildTypes {
                   release {
                       signingConfig signingConfigs.debug
@@ -144,7 +150,7 @@ jobs:
               implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
           }
           EOF
-          echo "✅ app/build.gradle fixed!"
+          echo "✅ app/build.gradle with namespace fixed!"
       
       - name: Fix root build.gradle
         run: |
@@ -179,6 +185,12 @@ jobs:
           }
           EOF
           echo "✅ root build.gradle fixed!"
+      
+      - name: Fix AndroidManifest.xml package name
+        run: |
+          echo "🔧 Fixing package name in AndroidManifest.xml..."
+          sed -i 's/package=".*"/package="com.yourcompany.yourapp"/' android/app/src/main/AndroidManifest.xml
+          echo "✅ Package name fixed!"
       
       - name: Add Storage Permissions
         run: |
