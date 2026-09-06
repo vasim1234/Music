@@ -147,17 +147,17 @@ jobs:
           }
           
           dependencies {
-              implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
+              implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.24"
           }
           EOF
           echo "✅ app/build.gradle with namespace fixed!"
       
-      - name: Fix root build.gradle
+      - name: Fix root build.gradle with Kotlin 1.9.24
         run: |
-          echo "🔧 Fixing root build.gradle..."
+          echo "🔧 Fixing root build.gradle with Kotlin 1.9.24..."
           cat > android/build.gradle << 'EOF'
           buildscript {
-              ext.kotlin_version = '1.9.0'
+              ext.kotlin_version = '1.9.24'
               repositories {
                   google()
                   mavenCentral()
@@ -184,7 +184,7 @@ jobs:
               delete rootProject.buildDir
           }
           EOF
-          echo "✅ root build.gradle fixed!"
+          echo "✅ root build.gradle with Kotlin 1.9.24 fixed!"
       
       - name: Fix AndroidManifest.xml package name
         run: |
@@ -203,8 +203,26 @@ jobs:
           \    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' android/app/src/main/AndroidManifest.xml
           echo "✅ Permissions added!"
       
+      # ✅ CRITICAL: STEP 1 - Get dependencies FIRST
       - name: Get Dependencies
         run: flutter pub get
+      
+      # ✅ CRITICAL: STEP 2 - Fix packages AFTER download
+      - name: Fix Kotlin in pub-cache packages
+        run: |
+          echo "🔧 Fixing Kotlin version in pub-cache packages (AFTER download)..."
+          
+          # Fix Kotlin version in all pub-cache packages
+          find ~/.pub-cache -name "build.gradle" -type f -exec sed -i "s/ext.kotlin_version = '1.7.10'/ext.kotlin_version = '1.9.24'/g" {} \;
+          find ~/.pub-cache -name "build.gradle" -type f -exec sed -i "s/kotlin_version = '1.7.10'/kotlin_version = '1.9.24'/g" {} \;
+          find ~/.pub-cache -name "build.gradle" -type f -exec sed -i "s/ext.kotlin_version = '1.7.1'/ext.kotlin_version = '1.9.24'/g" {} \;
+          find ~/.pub-cache -name "build.gradle" -type f -exec sed -i "s/kotlin_version = '1.7.1'/kotlin_version = '1.9.24'/g" {} \;
+          
+          # Fix compileSdkVersion in all pub-cache packages
+          find ~/.pub-cache -name "build.gradle" -type f -exec sed -i 's/compileSdkVersion 35/compileSdkVersion 34/g' {} \;
+          find ~/.pub-cache -name "build.gradle" -type f -exec sed -i 's/compileSdkVersion = 35/compileSdkVersion = 34/g' {} \;
+          
+          echo "✅ All pub-cache packages fixed to Kotlin 1.9.24 and SDK 34!"
       
       - name: Build APK
         run: flutter build apk --release
