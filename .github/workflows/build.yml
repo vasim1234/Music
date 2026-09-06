@@ -9,31 +9,36 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Java
-      uses: actions/setup-java@v3
-      with:
-        distribution: 'zulu'
-        java-version: '17'
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
 
-    - name: Set up Flutter
-      uses: subosito/flutter-action@v2
-      with:
-        flutter-version: '3.19.x'
-        channel: 'stable'
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.x'
+          channel: 'stable'
 
-    - name: Get Dependencies
-      run: flutter pub get
+      - name: Get Dependencies
+        run: flutter pub get
 
-    - name: Build Release APK (Optimized)
-      run: flutter build apk --release
+      - name: Clean Build Cache
+        run: flutter clean
 
-    - name: Upload Release APK
-      uses: softprops/action-gh-release@v1
-      with:
-        files: build/app/outputs/flutter-apk/app-release.apk
-        tag_name: v1.0.${{ github.run_number }}
-        name: "Bhai Bhai Music App v1.0.${{ github.run_number }}"
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build Release APK (Optimized)
+        run: flutter build apk --release --target-platform android-arm64
+
+      - name: Upload Release APK
+        uses: softprops/action-gh-release@v1
+        with:
+          files: build/app/outputs/flutter-apk/app-release.apk
+          tag_name: v1.0.${{ github.run_number }}
+          name: "Bhai Bhai Music App v1.0.${{ github.run_number }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
