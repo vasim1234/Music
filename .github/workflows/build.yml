@@ -3,51 +3,55 @@ name: Build APK
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
+      
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
-
+      
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.19.6'
           channel: 'stable'
-
-      - name: Install Android SDK 35
+      
+      # ✅ EKDM JADU SOLUTION: Android folder recreate karo
+      - name: Recreate Android Folder (The Magic Fix)
         run: |
-          echo "y" | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0" || true
-
+          echo "Deleting empty android folder..."
+          rm -rf android
+          
+          echo "Let Flutter create a brand new Android project..."
+          flutter create --platforms=android .
+          
+          echo "Adding Storage Permissions back..."
+          cat >> android/app/src/main/AndroidManifest.xml << 'EOFPERM'
+          <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+          <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+          <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
+          <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
+          <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+          EOFPERM
+          
+          echo "✅ BRAND NEW ANDROID FOLDER CREATED WITH V2 EMBEDDING!"
+      
       - name: Get Dependencies
         run: flutter pub get
-
-      - name: Patch third-party packages in Pub Cache
-        run: |
-          find ~/.pub-cache -name "build.gradle" -type f -exec sed -i 's/compileSdkVersion 35/compileSdkVersion 34/g' {} \;
-          find ~/.pub-cache -name "build.gradle" -type f -exec sed -i 's/compileSdkVersion = 35/compileSdkVersion = 34/g' {} \;
-
-      - name: Clean Cache
-        run: flutter clean
-
-      - name: Build Release APK
-        run: flutter build apk --release --no-tree-shake-icons
-        
+      
+      - name: Build APK
+        run: flutter build apk --release
+      
       - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: app-release
           path: build/app/outputs/flutter-apk/app-release.apk
-
