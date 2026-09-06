@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
+  static int _notificationId = 1;
   
   // Private callback variables
   static VoidCallback? _onPlayPause;
@@ -73,28 +74,28 @@ class NotificationService {
       ongoing: true,
       icon: '@mipmap/ic_launcher',
       actions: <AndroidNotificationAction>[
-        AndroidNotificationAction(
+        const AndroidNotificationAction(
           'previous',
           '⏮️ Prev',
-          icon: DrawableResourceAndroidBitmap('ic_skip_previous'),
+          // ✅ REMOVED: icon: AndroidBitmap.fromString('ic_skip_previous'),
           showsUserInterface: true,
         ),
         AndroidNotificationAction(
           'play_pause',
           isPlaying ? '⏸️ Pause' : '▶️ Play',
-          icon: DrawableResourceAndroidBitmap(isPlaying ? 'ic_pause' : 'ic_play_arrow'),
+          // ✅ REMOVED: icon: AndroidBitmap.fromString(isPlaying ? 'ic_pause' : 'ic_play_arrow'),
           showsUserInterface: true,
         ),
-        AndroidNotificationAction(
+        const AndroidNotificationAction(
           'next',
           '⏭️ Next',
-          icon: DrawableResourceAndroidBitmap('ic_skip_next'),
+          // ✅ REMOVED: icon: AndroidBitmap.fromString('ic_skip_next'),
           showsUserInterface: true,
         ),
-        AndroidNotificationAction(
+        const AndroidNotificationAction(
           'close',
           '⏹️ Close',
-          icon: DrawableResourceAndroidBitmap('ic_close'),
+          // ✅ REMOVED: icon: AndroidBitmap.fromString('ic_close'),
           showsUserInterface: true,
         ),
       ],
@@ -103,7 +104,7 @@ class NotificationService {
     final NotificationDetails details = NotificationDetails(android: androidDetails);
 
     await _notifications.show(
-      0,
+      _notificationId,
       isPlaying ? '▶️ Now Playing: $title' : '⏸️ Paused: $title',
       artist,
       details,
@@ -120,6 +121,6 @@ class NotificationService {
   }
 
   static Future<void> cancelNotification() async {
-    await _notifications.cancel(0);
+    await _notifications.cancelAll();
   }
 }
