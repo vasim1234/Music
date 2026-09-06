@@ -28,81 +28,94 @@ jobs:
           flutter-version: '3.19.6'
           channel: 'stable'
       
-      # ✅ FIX: Install Android SDK 35 explicitly
-      - name: 📦 Install Android SDK 35
-        run: |
-          echo "📦 Installing Android SDK 35..."
-          sudo apt-get update
-          sudo apt-get install -y wget unzip
-          
-          # Set Android SDK path
-          export ANDROID_HOME=$HOME/android-sdk
-          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin
-          export PATH=$PATH:$ANDROID_HOME/platform-tools
-          export PATH=$PATH:$ANDROID_HOME/tools
-          export PATH=$PATH:$ANDROID_HOME/tools/bin
-          
-          mkdir -p $ANDROID_HOME
-          
-          # Download command line tools
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdline-tools.zip
-          unzip -q /tmp/cmdline-tools.zip -d $ANDROID_HOME/cmdline-tools
-          mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
-          
-          # Accept all licenses
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
-          
-          # Install SDK 35
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-35"
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "build-tools;35.0.0"
-          
-          # Set environment variable for Gradle
-          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
-          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
-          echo "PATH=$PATH" >> $GITHUB_ENV
-          
-          # Verify installation
-          echo "✅ Android SDK 35 installed!"
-          ls -la $ANDROID_HOME/platforms/ || echo "⚠️ Platforms directory not found"
-          ls -la $ANDROID_HOME/build-tools/ || echo "⚠️ Build-tools directory not found"
-      
-      # ✅ Alternative: Use sdkmanager if already available
-      - name: 📦 Alternative - Use existing sdkmanager
-        if: failure()
-        run: |
-          echo "📦 Trying with existing sdkmanager..."
-          export ANDROID_HOME=/usr/local/lib/android/sdk
-          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin
-          
-          # Check if sdkmanager exists
-          if command -v sdkmanager &> /dev/null; then
-            echo "✅ sdkmanager found!"
-            sdkmanager "platforms;android-35"
-            sdkmanager "build-tools;35.0.0"
-          else
-            echo "⚠️ sdkmanager not found, skipping..."
-          fi
-      
+      # ✅ STEP 1: Get dependencies first
       - name: Get Dependencies
-        run: |
-          export ANDROID_HOME=/usr/local/lib/android/sdk
-          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin
-          flutter pub get
+        run: flutter pub get
       
-      # ✅ Force compileSdkVersion to 35 in project files
-      - name: 🔧 Ensure compileSdkVersion 35 in project
+      # ✅ STEP 2: 🔧 Force SDK 34 in ALL packages
+      - name: 🔧 Fix ALL packages to use SDK 34
         run: |
-          echo "🔧 Setting compileSdkVersion to 35 in project files..."
-          sed -i 's/compileSdkVersion 34/compileSdkVersion 35/g' android/app/build.gradle
-          sed -i 's/compileSdkVersion = 34/compileSdkVersion = 35/g' android/app/build.gradle
+          echo "🔧 Force fixing ALL packages to use compileSdkVersion 34..."
           
-          echo "✅ Project files updated to use SDK 35!"
-          grep "compileSdkVersion" android/app/build.gradle
+          # Find ALL build.gradle files in pub cache
+          find ~/.pub-cache -name "build.gradle" -type f | while read file; do
+            # Replace ALL occurrences of compileSdkVersion 35 with 34
+            sed -i 's/compileSdkVersion = 35/compileSdkVersion = 34/g' "$file"
+            sed -i 's/compileSdkVersion 35/compileSdkVersion 34/g' "$file"
+            sed -i 's/compileSdkVersion=35/compileSdkVersion=34/g' "$file"
+            sed -i 's/compileSdkVersion: 35/compileSdkVersion: 34/g' "$file"
+            
+            # Replace minSdkVersion if needed
+            sed -i 's/minSdkVersion 21/minSdkVersion 26/g' "$file"
+            sed -i 's/minSdkVersion = 21/minSdkVersion = 26/g' "$file"
+          done
+          
+          echo "✅ ALL packages fixed to use SDK 34!"
       
-      # ✅ Fix Kotlin version
-      - name: 🔧 Fix Kotlin version
+      # ✅ STEP 3: Fix project files too
+      - name: 🔧 Fix project files
         run: |
-          echo "🔧 Setting Kotlin version to 1.9.0..."
+          # Fix app/build.gradle
+          cat > android/app/build.gradle << 'EOF'
+          def localProperties = new Properties()
+          def localPropertiesFile = rootProject.file('local.properties')
+          if (localPropertiesFile.exists()) {
+              localPropertiesFile.withReader('UTF-8') { reader ->
+                  localProperties.load(reader)
+              }
+          }
+          def flutterRoot = localProperties.getProperty('flutter.sdk')
+          if (flutterRoot == null) {
+              throw new GradleException("Flutter SDK not found. Define location with flutter.sdk in the local.properties file.")
+          }
+          def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
+          if (flutterVersionCode == null) {
+              flutterVersionCode = '1'
+          }
+          def flutterVersionName = localProperties.getProperty('flutter.versionName')
+          if (flutterVersionName == null) {
+              flutterVersionName = '1.0'
+          }
+          apply plugin: 'com.android.application'
+          apply plugin: 'kotlin-android'
+          apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
+          android {
+              compileSdkVersion 34
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_1_8
+                  targetCompatibility JavaVersion.VERSION_1_8
+              }
+              kotlinOptions {
+                  jvmTarget = '1.8'
+              }
+              sourceSets {
+                  main.java.srcDirs += 'src/main/kotlin'
+              }
+              defaultConfig {
+                  applicationId 'com.yourcompany.yourapp'
+                  minSdkVersion 26
+                  targetSdkVersion 34
+                  versionCode flutterVersionCode.toInteger()
+                  versionName flutterVersionName
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.debug
+                      minifyEnabled true
+                      shrinkResources false
+                      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+                  }
+              }
+          }
+          flutter {
+              source '../..'
+          }
+          dependencies {
+              implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
+          }
+          EOF
+          
+          # Fix root build.gradle
           cat > android/build.gradle << 'EOF'
           buildscript {
               ext.kotlin_version = '1.9.0'
@@ -133,25 +146,22 @@ jobs:
           }
           EOF
           
-          echo "✅ Kotlin version fixed!"
+          echo "✅ Project files fixed!"
       
-      - name: 🔍 Verify SDK 35 Installation
+      # ✅ STEP 4: Verify fixes
+      - name: 🔍 Verify fixes
         run: |
-          echo "📋 Verifying Android SDK 35 installation..."
-          export ANDROID_HOME=/usr/local/lib/android/sdk
-          
-          if [ -d "$ANDROID_HOME/platforms/android-35" ]; then
-            echo "✅ Android SDK 35 is installed!"
-            ls -la $ANDROID_HOME/platforms/android-35/
+          echo "📋 Checking if any compileSdkVersion 35 remains..."
+          if grep -r "compileSdkVersion 35" ~/.pub-cache --include="build.gradle" 2>/dev/null; then
+            echo "⚠️ Some files still have 35. Fixing again..."
+            find ~/.pub-cache -name "build.gradle" -type f -exec sed -i 's/compileSdkVersion 35/compileSdkVersion 34/g' {} \;
           else
-            echo "⚠️ Android SDK 35 not found in default location. Checking custom location..."
-            if [ -d "$HOME/android-sdk/platforms/android-35" ]; then
-              echo "✅ Android SDK 35 found in custom location!"
-              ls -la $HOME/android-sdk/platforms/android-35/
-            else
-              echo "❌ Android SDK 35 not found! Build might fail."
-            fi
+            echo "✅ No compileSdkVersion 35 found in pub cache!"
           fi
+          
+          echo ""
+          echo "📋 Project compileSdkVersion:"
+          grep "compileSdkVersion" android/app/build.gradle
       
       - name: Clean Build Cache
         run: |
@@ -160,10 +170,8 @@ jobs:
       
       - name: Build Release APK
         run: |
-          export ANDROID_HOME=/usr/local/lib/android/sdk
-          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin
           echo "🚀 Building APK..."
-          flutter build apk --release
+          flutter build apk --release --verbose
       
       - name: Upload APK
         if: success()
