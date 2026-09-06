@@ -24,11 +24,11 @@ jobs:
           flutter-version: '3.19.x'
           channel: 'stable'
 
-      - name: Get Dependencies
-        run: flutter pub get
-
       - name: Clean Build Cache
         run: flutter clean
+
+      - name: Get Dependencies
+        run: flutter pub get
 
       - name: Build Release APK (Optimized)
         run: flutter build apk --release --target-platform android-arm64
@@ -41,4 +41,3 @@ jobs:
           name: "Bhai Bhai Music App v1.0.${{ github.run_number }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
