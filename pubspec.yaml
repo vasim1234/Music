@@ -33,28 +33,12 @@ jobs:
           rm -rf ~/.pub-cache
           echo "✅ Cache cleared!"
       
-      # ✅ FIX: Use sed to change the name line
-      - name: Force Fix Package Name
+      # ✅ FIX: Correct pubspec.yaml with SDK constraint
+      - name: Fix pubspec.yaml
         run: |
-          echo "🔧 Force fixing package name in pubspec.yaml..."
+          echo "🔧 Fixing pubspec.yaml with correct SDK constraint..."
           
-          # Show current content
-          echo "📋 Current pubspec.yaml:"
-          cat pubspec.yaml | head -5
-          
-          # Use sed to change name: Music to name: music
-          sed -i '1s/name:.*/name: music/' pubspec.yaml
-          
-          echo ""
-          echo "📋 After fix:"
-          cat pubspec.yaml | head -5
-          
-          # Verify
-          if grep -q "name: music" pubspec.yaml; then
-            echo "✅ Package name fixed to 'music'!"
-          else
-            echo "❌ Sed didn't work. Overwriting entire file..."
-            cat > pubspec.yaml << 'EOF'
+          cat > pubspec.yaml << 'EOF'
           name: music
           description: A local music player app
           publish_to: 'none'
@@ -82,15 +66,12 @@ jobs:
           flutter:
             uses-material-design: true
           EOF
-            echo "✅ pubspec.yaml completely rewritten!"
-          fi
+          
+          echo "✅ pubspec.yaml fixed with SDK constraint!"
+          cat pubspec.yaml | head -10
       
-      # ✅ ALSO fix before flutter create
       - name: Recreate Android Folder
         run: |
-          echo "🔍 Verifying pubspec.yaml before flutter create..."
-          head -1 pubspec.yaml
-          
           echo "Deleting android folder..."
           rm -rf android
           
@@ -99,10 +80,17 @@ jobs:
           
           echo "✅ Android folder created!"
       
+      - name: Fix minSdkVersion to 21
+        run: |
+          echo "🔧 Fixing minSdkVersion to 21..."
+          sed -i 's/minSdkVersion 19/minSdkVersion 21/g' android/app/build.gradle
+          sed -i 's/minSdkVersion = 19/minSdkVersion = 21/g' android/app/build.gradle
+          sed -i '/defaultConfig {/,/}/ s/minSdkVersion [0-9]*/minSdkVersion 21/g' android/app/build.gradle
+          echo "✅ minSdkVersion fixed to 21!"
+      
       - name: Add Storage Permissions
         run: |
           echo "Adding permissions to AndroidManifest.xml..."
-          
           sed -i '/<manifest /a\
           \    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>\
           \    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>\
