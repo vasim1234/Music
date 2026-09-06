@@ -153,7 +153,7 @@ jobs:
           EOF
           echo "✅ app/build.gradle fixed!"
       
-      - name: Fix root build.gradle with Kotlin 1.8.0
+      - name: Fix root build.gradle with Kotlin 1.8.0 and resolution
         run: |
           echo "🔧 Fixing root build.gradle with Kotlin 1.8.0..."
           cat > android/build.gradle << 'EOF'
@@ -168,6 +168,20 @@ jobs:
                   classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
               }
           }
+          
+          // ✅ FORCE ALL KOTLIN DEPENDENCIES TO USE 1.8.0
+          subprojects {
+              configurations.all {
+                  resolutionStrategy {
+                      eachDependency { DependencyResolveDetails details ->
+                          if (details.requested.group == 'org.jetbrains.kotlin') {
+                              details.useVersion '1.8.0'
+                          }
+                      }
+                  }
+              }
+          }
+          
           allprojects {
               repositories {
                   google()
@@ -185,7 +199,7 @@ jobs:
               delete rootProject.buildDir
           }
           EOF
-          echo "✅ root build.gradle with Kotlin 1.8.0 fixed!"
+          echo "✅ root build.gradle with Kotlin 1.8.0 and resolution fixed!"
       
       - name: Fix AndroidManifest.xml package name
         run: |
@@ -207,7 +221,7 @@ jobs:
       - name: Get Dependencies
         run: flutter pub get
       
-      - name: Fix Kotlin version in pub-cache packages
+      - name: Force Kotlin version in pub-cache packages
         run: |
           echo "🔧 Fixing Kotlin version in pub-cache packages..."
           find ~/.pub-cache -name "build.gradle" -type f -exec sed -i "s/ext.kotlin_version = '1.7.10'/ext.kotlin_version = '1.8.0'/g" {} \;
