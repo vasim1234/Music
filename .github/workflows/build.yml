@@ -65,7 +65,7 @@ jobs:
           flutter:
             uses-material-design: true
           EOF
-          echo "✅ pubspec.yaml with audioplayers 5.2.1 fixed!"
+          echo "✅ pubspec.yaml fixed!"
       
       - name: Recreate Android Folder
         run: |
@@ -148,17 +148,17 @@ jobs:
           }
           
           dependencies {
-              implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.7.1"
+              implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.0"
           }
           EOF
           echo "✅ app/build.gradle fixed!"
       
-      - name: Fix root build.gradle with Kotlin 1.7.1
+      - name: Fix root build.gradle with Kotlin 1.8.0
         run: |
-          echo "🔧 Fixing root build.gradle with Kotlin 1.7.1..."
+          echo "🔧 Fixing root build.gradle with Kotlin 1.8.0..."
           cat > android/build.gradle << 'EOF'
           buildscript {
-              ext.kotlin_version = '1.7.1'
+              ext.kotlin_version = '1.8.0'
               repositories {
                   google()
                   mavenCentral()
@@ -185,7 +185,7 @@ jobs:
               delete rootProject.buildDir
           }
           EOF
-          echo "✅ root build.gradle with Kotlin 1.7.1 fixed!"
+          echo "✅ root build.gradle with Kotlin 1.8.0 fixed!"
       
       - name: Fix AndroidManifest.xml package name
         run: |
@@ -206,6 +206,16 @@ jobs:
       
       - name: Get Dependencies
         run: flutter pub get
+      
+      - name: Fix Kotlin version in pub-cache packages
+        run: |
+          echo "🔧 Fixing Kotlin version in pub-cache packages..."
+          find ~/.pub-cache -name "build.gradle" -type f -exec sed -i "s/ext.kotlin_version = '1.7.10'/ext.kotlin_version = '1.8.0'/g" {} \;
+          find ~/.pub-cache -name "build.gradle" -type f -exec sed -i "s/kotlin_version = '1.7.10'/kotlin_version = '1.8.0'/g" {} \;
+          find ~/.pub-cache -name "build.gradle" -type f -exec sed -i "s/ext.kotlin_version = '1.7.1'/ext.kotlin_version = '1.8.0'/g" {} \;
+          find ~/.pub-cache -name "build.gradle" -type f -exec sed -i "s/kotlin_version = '1.7.1'/kotlin_version = '1.8.0'/g" {} \;
+          find ~/.pub-cache -name "build.gradle" -type f -exec sed -i 's/compileSdkVersion 35/compileSdkVersion 34/g' {} \;
+          echo "✅ All pub-cache packages fixed to Kotlin 1.8.0!"
       
       - name: Build APK
         run: flutter build apk --release
