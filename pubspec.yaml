@@ -1,109 +1,26 @@
-name: Build APK
+name: music
+description: A local music player app
+publish_to: 'none'
+version: 1.0.0+1
 
-on:
-  push:
-    branches: [ main ]
+environment:
+  sdk: ">=3.0.0 <4.0.0"
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '17'
-      
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.19.6'
-          channel: 'stable'
-      
-      # ✅ DIRECT FIX: Overwrite pubspec.yaml with correct name
-      - name: Fix Package Name
-        run: |
-          echo "🔧 Force fixing package name in pubspec.yaml..."
-          
-          # Directly replace the name line
-          sed -i '1s/name:.*/name: music/' pubspec.yaml
-          
-          # Verify the fix
-          echo "📋 First line of pubspec.yaml:"
-          head -1 pubspec.yaml
-          
-          if grep -q "name: music" pubspec.yaml; then
-            echo "✅ Package name fixed to 'music'!"
-          else
-            echo "❌ Package name not fixed! Trying alternative method..."
-            cat > pubspec.yaml << 'EOF'
-          name: music
-          description: A local music player app
-          publish_to: 'none'
-          version: 1.0.0+1
-          
-          environment:
-            sdk: ">=3.0.0 <4.0.0"
-          
-          dependencies:
-            flutter:
-              sdk: flutter
-            audioplayers: ^6.0.0
-            audiotags: ^1.4.2
-            file_picker: ^8.0.0
-            path_provider: ^2.1.4
-            permission_handler: ^11.3.1
-            shared_preferences: ^2.2.2
-            flutter_local_notifications: ^17.1.2
-          
-          dev_dependencies:
-            flutter_test:
-              sdk: flutter
-            flutter_lints: ^4.0.0
-          
-          flutter:
-            uses-material-design: true
-          EOF
-            echo "✅ pubspec.yaml completely rewritten with correct name!"
-          fi
-      
-      - name: Recreate Android Folder
-        run: |
-          echo "Deleting empty android folder..."
-          rm -rf android
-          
-          echo "Let Flutter create a brand new Android project..."
-          flutter create --platforms=android .
-          
-          echo "✅ Android folder created!"
-      
-      - name: Add Storage Permissions
-        run: |
-          echo "Adding permissions to AndroidManifest.xml..."
-          
-          # Use sed to insert permissions after <manifest> tag
-          sed -i '/<manifest /a\
-          \    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>\
-          \    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>\
-          \    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>\
-          \    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>\
-          \    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' android/app/src/main/AndroidManifest.xml
-          
-          echo "✅ Permissions added!"
-      
-      - name: Get Dependencies
-        run: flutter pub get
-      
-      - name: Build APK
-        run: flutter build apk --release
-      
-      - name: Upload APK
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-release
-          path: build/app/outputs/flutter-apk/app-release.apk
+dependencies:
+  flutter:
+    sdk: flutter
+  audioplayers: ^6.0.0
+  audiotags: ^1.4.2
+  file_picker: ^8.0.0
+  path_provider: ^2.1.4
+  permission_handler: ^11.3.1
+  shared_preferences: ^2.2.2
+  flutter_local_notifications: ^17.1.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
