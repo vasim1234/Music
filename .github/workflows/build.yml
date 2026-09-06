@@ -28,7 +28,7 @@ jobs:
           flutter-version: '3.19.6'
           channel: 'stable'
       
-      - name: 🔧 Fix Android Configuration
+      - name: 🔧 Fix Android Configuration & Suppress SDK Errors
         run: |
           echo "🔧 Forcing compileSdkVersion to 34..."
           sed -i 's/compileSdkVersion 35/compileSdkVersion 34/g' android/app/build.gradle
@@ -37,6 +37,10 @@ jobs:
           echo "🔧 Forcing Kotlin version to 1.9.0..."
           sed -i "s/ext.kotlin_version = .*/ext.kotlin_version = '1.9.0'/g" android/build.gradle
           sed -i "s/ext.kotlin_version = .*/ext.kotlin_version = '1.9.0'/g" build.gradle || true
+          
+          echo "🔧 Adding suppression properties to gradle.properties..."
+          echo "android.suppressUnsupportedCompileSdk=34" >> android/gradle.properties
+          echo "android.suppressUnsupportedCompileSdk=35" >> android/gradle.properties
           
           echo "✅ Config check:"
           grep -n "compileSdkVersion" android/app/build.gradle
