@@ -12,7 +12,7 @@ dependencies:
 
   # Audio & File Handling
   audioplayers: ^6.0.0
-  audiotags: ^0.5.0
+  audiotags: ^1.4.2        # ✅ CORRECT VERSION (was 0.5.0)
   file_picker: ^8.0.0
   path_provider: ^2.1.4
 
