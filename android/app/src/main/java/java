@@ -2,6 +2,6 @@ package com.yourcompany.yourapp;
 
 import io.flutter.embedding.android.FlutterActivity;
 
-public class MainActivity extends FlutterActivity {  // ← Must extend FlutterActivity
+public class MainActivity extends FlutterActivity {
     // No need to override anything
-} 
+}
