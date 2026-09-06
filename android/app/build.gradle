@@ -1,6 +1,6 @@
-- name: Fix app/build.gradle
+- name: Fix app/build.gradle completely
   run: |
-    echo "🔧 Fixing app/build.gradle..."
+    echo "🔧 Overwriting app/build.gradle with namespace..."
     cat > android/app/build.gradle << 'EOF'
     def localProperties = new Properties()
     def localPropertiesFile = rootProject.file('local.properties')
@@ -30,6 +30,7 @@
     apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
     
     android {
+        namespace "com.yourcompany.yourapp"  // ✅ YAHAN ADD HUA!
         compileSdkVersion 34
     
         compileOptions {
@@ -71,4 +72,4 @@
         implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
     }
     EOF
-    echo "✅ app/build.gradle fixed!"
+    echo "✅ app/build.gradle with namespace fixed!"
