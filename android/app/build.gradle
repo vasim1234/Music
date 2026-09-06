@@ -26,7 +26,7 @@ apply plugin: 'kotlin-android'
 apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
 
 android {
-    compileSdkVersion 35  // ✅ 34 se 35 karo (warning ke liye)
+    compileSdkVersion 34  // ✅ 34 pe rakho (35 mat use karo)
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
@@ -43,7 +43,7 @@ android {
 
     defaultConfig {
         applicationId 'com.yourcompany.yourapp'
-        minSdkVersion 26  // ✅ 21 se 26 karo (adaptive icon ke liye)
+        minSdkVersion 26  // ✅ 26 hi rakho
         targetSdkVersion 34
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
