@@ -14,13 +14,6 @@ jobs:
         with:
           fetch-depth: 0
       
-      - name: Clear Flutter Cache
-        run: |
-          echo "🧹 Clearing Flutter cache..."
-          flutter clean
-          rm -rf ~/.pub-cache
-          echo "✅ Cache cleared!"
-      
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
@@ -33,16 +26,22 @@ jobs:
           flutter-version: '3.19.6'
           channel: 'stable'
       
+      # ✅ Flutter setup ke BAAD cache clear karo
+      - name: Clear Flutter Cache
+        run: |
+          echo "🧹 Clearing Flutter cache..."
+          flutter clean
+          rm -rf ~/.pub-cache
+          echo "✅ Cache cleared!"
+      
       # ✅ FORCE FIX: Overwrite pubspec.yaml with correct name
       - name: Force Fix Package Name
         run: |
           echo "🔧 Force fixing package name in pubspec.yaml..."
           
-          # Show current content
           echo "📋 Current pubspec.yaml first line:"
           head -1 pubspec.yaml
           
-          # Directly overwrite the file with correct content
           cat > pubspec.yaml << 'EOF'
           name: music
           description: A local music player app
@@ -90,7 +89,6 @@ jobs:
         run: |
           echo "Adding permissions to AndroidManifest.xml..."
           
-          # Use sed to insert permissions after <manifest> tag
           sed -i '/<manifest /a\
           \    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>\
           \    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>\
