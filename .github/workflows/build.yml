@@ -34,9 +34,10 @@ jobs:
           rm -f pubspec.lock
           echo "✅ Cache cleared and pubspec.lock deleted!"
       
-      - name: Fix pubspec.yaml
+      # ✅ CRITICAL: Use audioplayers 6.1.0 (compatible with Kotlin 1.9.24)
+      - name: Fix pubspec.yaml with compatible versions
         run: |
-          echo "🔧 Fixing pubspec.yaml..."
+          echo "🔧 Fixing pubspec.yaml with compatible versions..."
           cat > pubspec.yaml << 'EOF'
           name: music
           description: A local music player app
@@ -49,7 +50,7 @@ jobs:
           dependencies:
             flutter:
               sdk: flutter
-            audioplayers: ^6.0.0
+            audioplayers: ^6.1.0
             audiotags: ^1.4.2
             file_picker: ^8.0.0
             path_provider: ^2.1.4
@@ -65,7 +66,7 @@ jobs:
           flutter:
             uses-material-design: true
           EOF
-          echo "✅ pubspec.yaml fixed!"
+          echo "✅ pubspec.yaml with audioplayers 6.1.0 fixed!"
       
       - name: Recreate Android Folder
         run: |
@@ -151,11 +152,11 @@ jobs:
               implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.24"
           }
           EOF
-          echo "✅ app/build.gradle with namespace fixed!"
+          echo "✅ app/build.gradle fixed!"
       
-      - name: Fix root build.gradle with Kotlin 1.9.24
+      - name: Fix root build.gradle
         run: |
-          echo "🔧 Fixing root build.gradle with Kotlin 1.9.24..."
+          echo "🔧 Fixing root build.gradle..."
           cat > android/build.gradle << 'EOF'
           buildscript {
               ext.kotlin_version = '1.9.24'
@@ -185,7 +186,7 @@ jobs:
               delete rootProject.buildDir
           }
           EOF
-          echo "✅ root build.gradle with Kotlin 1.9.24 fixed!"
+          echo "✅ root build.gradle fixed!"
       
       - name: Fix AndroidManifest.xml package name
         run: |
@@ -206,50 +207,6 @@ jobs:
       
       - name: Get Dependencies
         run: flutter pub get
-      
-      - name: Fix Kotlin in ALL pub-cache packages
-        run: |
-          echo "🔧 Fixing Kotlin version in ALL pub-cache packages..."
-          
-          # Fix all packages
-          find ~/.pub-cache -name "build.gradle" -type f -exec sed -i "s/ext.kotlin_version = '1.7.10'/ext.kotlin_version = '1.9.24'/g" {} \;
-          find ~/.pub-cache -name "build.gradle" -type f -exec sed -i "s/kotlin_version = '1.7.10'/kotlin_version = '1.9.24'/g" {} \;
-          find ~/.pub-cache -name "build.gradle" -type f -exec sed -i "s/ext.kotlin_version = '1.7.1'/ext.kotlin_version = '1.9.24'/g" {} \;
-          find ~/.pub-cache -name "build.gradle" -type f -exec sed -i "s/kotlin_version = '1.7.1'/kotlin_version = '1.9.24'/g" {} \;
-          find ~/.pub-cache -name "build.gradle" -type f -exec sed -i 's/compileSdkVersion 35/compileSdkVersion 34/g' {} \;
-          find ~/.pub-cache -name "build.gradle" -type f -exec sed -i 's/compileSdkVersion = 35/compileSdkVersion = 34/g' {} \;
-          
-          echo "✅ All packages fixed!"
-      
-      # ✅ CRITICAL: Directly target audioplayers_android
-      - name: Force Fix audioplayers_android package
-        run: |
-          echo "🔧 Directly fixing audioplayers_android package..."
-          
-          # Find audioplayers_android directory
-          AUDIO_PLAYER_DIR=$(find ~/.pub-cache -name "audioplayers_android-5.2.0" -type d 2>/dev/null | head -1)
-          
-          if [ -n "$AUDIO_PLAYER_DIR" ]; then
-            echo "📁 Found audioplayers_android at: $AUDIO_PLAYER_DIR"
-            
-            # Fix all gradle files in this package
-            find "$AUDIO_PLAYER_DIR" -name "*.gradle" -type f -exec sed -i 's/compileSdkVersion 35/compileSdkVersion 34/g' {} \;
-            find "$AUDIO_PLAYER_DIR" -name "*.gradle" -type f -exec sed -i "s/ext.kotlin_version = '1.7.1'/ext.kotlin_version = '1.9.24'/g" {} \;
-            find "$AUDIO_PLAYER_DIR" -name "*.gradle" -type f -exec sed -i "s/kotlin_version = '1.7.1'/kotlin_version = '1.9.24'/g" {} \;
-            
-            echo "✅ audioplayers_android package fixed!"
-          else
-            # Try any version
-            AUDIO_PLAYER_DIR=$(find ~/.pub-cache -name "audioplayers_android*" -type d 2>/dev/null | head -1)
-            if [ -n "$AUDIO_PLAYER_DIR" ]; then
-              echo "📁 Found: $AUDIO_PLAYER_DIR"
-              find "$AUDIO_PLAYER_DIR" -name "*.gradle" -type f -exec sed -i 's/compileSdkVersion 35/compileSdkVersion 34/g' {} \;
-              find "$AUDIO_PLAYER_DIR" -name "*.gradle" -type f -exec sed -i "s/ext.kotlin_version = '1.7.1'/ext.kotlin_version = '1.9.24'/g" {} \;
-              echo "✅ Fixed!"
-            else
-              echo "⚠️ audioplayers_android package not found!"
-            fi
-          fi
       
       - name: Build APK
         run: flutter build apk --release
