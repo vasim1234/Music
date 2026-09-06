@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
-  static int _notificationId = 1;
   
   // Private callback variables
   static VoidCallback? _onPlayPause;
@@ -74,28 +73,28 @@ class NotificationService {
       ongoing: true,
       icon: '@mipmap/ic_launcher',
       actions: <AndroidNotificationAction>[
-        const AndroidNotificationAction(
+        AndroidNotificationAction(
           'previous',
           '⏮️ Prev',
-          icon: AndroidBitmap.fromString('ic_skip_previous'),
+          icon: DrawableResourceAndroidBitmap('ic_skip_previous'),
           showsUserInterface: true,
         ),
         AndroidNotificationAction(
           'play_pause',
           isPlaying ? '⏸️ Pause' : '▶️ Play',
-          icon: AndroidBitmap.fromString(isPlaying ? 'ic_pause' : 'ic_play_arrow'),
+          icon: DrawableResourceAndroidBitmap(isPlaying ? 'ic_pause' : 'ic_play_arrow'),
           showsUserInterface: true,
         ),
-        const AndroidNotificationAction(
+        AndroidNotificationAction(
           'next',
           '⏭️ Next',
-          icon: AndroidBitmap.fromString('ic_skip_next'),
+          icon: DrawableResourceAndroidBitmap('ic_skip_next'),
           showsUserInterface: true,
         ),
-        const AndroidNotificationAction(
+        AndroidNotificationAction(
           'close',
           '⏹️ Close',
-          icon: AndroidBitmap.fromString('ic_close'),
+          icon: DrawableResourceAndroidBitmap('ic_close'),
           showsUserInterface: true,
         ),
       ],
@@ -104,7 +103,7 @@ class NotificationService {
     final NotificationDetails details = NotificationDetails(android: androidDetails);
 
     await _notifications.show(
-      _notificationId,
+      0,
       isPlaying ? '▶️ Now Playing: $title' : '⏸️ Paused: $title',
       artist,
       details,
@@ -121,6 +120,6 @@ class NotificationService {
   }
 
   static Future<void> cancelNotification() async {
-    await _notifications.cancelAll();
+    await _notifications.cancel(0);
   }
 }
