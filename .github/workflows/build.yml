@@ -28,33 +28,46 @@ jobs:
           flutter-version: '3.19.6'
           channel: 'stable'
       
-      # ✅ STEP 1: Get dependencies first
+      # ✅ STEP 1: Get dependencies FIRST
       - name: Get Dependencies
         run: flutter pub get
       
-      # ✅ STEP 2: 🔧 Force SDK 34 in ALL packages
-      - name: 🔧 Fix ALL packages to use SDK 34
+      # ✅ STEP 2: Fix Kotlin version in ALL places AFTER pub get
+      - name: 🔧 Force Fix Kotlin Version in ALL files
         run: |
-          echo "🔧 Force fixing ALL packages to use compileSdkVersion 34..."
+          echo "🔧 Force fixing Kotlin version to 1.9.0 in ALL build.gradle files..."
           
-          # Find ALL build.gradle files in pub cache
-          find ~/.pub-cache -name "build.gradle" -type f | while read file; do
-            # Replace ALL occurrences of compileSdkVersion 35 with 34
-            sed -i 's/compileSdkVersion = 35/compileSdkVersion = 34/g' "$file"
-            sed -i 's/compileSdkVersion 35/compileSdkVersion 34/g' "$file"
-            sed -i 's/compileSdkVersion=35/compileSdkVersion=34/g' "$file"
-            sed -i 's/compileSdkVersion: 35/compileSdkVersion: 34/g' "$file"
-            
-            # Replace minSdkVersion if needed
-            sed -i 's/minSdkVersion 21/minSdkVersion 26/g' "$file"
-            sed -i 's/minSdkVersion = 21/minSdkVersion = 26/g' "$file"
-          done
+          # Fix root build.gradle
+          cat > android/build.gradle << 'EOF'
+          buildscript {
+              ext.kotlin_version = '1.9.0'
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:7.4.2'
+                  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+              }
+          }
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.buildDir = '../build'
+          subprojects {
+              project.buildDir = "${rootProject.buildDir}/${project.name}"
+          }
+          subprojects {
+              project.evaluationDependsOn(':app')
+          }
+          tasks.register('clean', Delete) {
+              delete rootProject.buildDir
+          }
+          EOF
           
-          echo "✅ ALL packages fixed to use SDK 34!"
-      
-      # ✅ STEP 3: Fix project files too
-      - name: 🔧 Fix project files
-        run: |
           # Fix app/build.gradle
           cat > android/app/build.gradle << 'EOF'
           def localProperties = new Properties()
@@ -115,62 +128,43 @@ jobs:
           }
           EOF
           
-          # Fix root build.gradle
-          cat > android/build.gradle << 'EOF'
-          buildscript {
-              ext.kotlin_version = '1.9.0'
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-              dependencies {
-                  classpath 'com.android.tools.build:gradle:7.4.2'
-                  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-              }
-          }
-          allprojects {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
-          rootProject.buildDir = '../build'
-          subprojects {
-              project.buildDir = "${rootProject.buildDir}/${project.name}"
-          }
-          subprojects {
-              project.evaluationDependsOn(':app')
-          }
-          tasks.register('clean', Delete) {
-              delete rootProject.buildDir
-          }
-          EOF
-          
-          echo "✅ Project files fixed!"
-      
-      # ✅ STEP 4: Verify fixes
-      - name: 🔍 Verify fixes
-        run: |
-          echo "📋 Checking if any compileSdkVersion 35 remains..."
-          if grep -r "compileSdkVersion 35" ~/.pub-cache --include="build.gradle" 2>/dev/null; then
-            echo "⚠️ Some files still have 35. Fixing again..."
-            find ~/.pub-cache -name "build.gradle" -type f -exec sed -i 's/compileSdkVersion 35/compileSdkVersion 34/g' {} \;
-          else
-            echo "✅ No compileSdkVersion 35 found in pub cache!"
-          fi
+          # ✅ ALSO fix pub-cache packages
+          echo "🔧 Fixing Kotlin version in pub-cache packages..."
+          find ~/.pub-cache -name "build.gradle" -type f -exec sed -i "s/ext.kotlin_version = '1.7.1'/ext.kotlin_version = '1.9.0'/g" {} \;
+          find ~/.pub-cache -name "build.gradle" -type f -exec sed -i "s/kotlin_version = '1.7.1'/kotlin_version = '1.9.0'/g" {} \;
+          find ~/.pub-cache -name "build.gradle" -type f -exec sed -i 's/compileSdkVersion 35/compileSdkVersion 34/g' {} \;
+          find ~/.pub-cache -name "build.gradle" -type f -exec sed -i 's/compileSdkVersion = 35/compileSdkVersion = 34/g' {} \;
           
           echo ""
-          echo "📋 Project compileSdkVersion:"
+          echo "✅ Verifying Kotlin version in root build.gradle:"
+          grep "ext.kotlin_version" android/build.gradle
+          
+          echo ""
+          echo "✅ Verifying compileSdkVersion in app/build.gradle:"
           grep "compileSdkVersion" android/app/build.gradle
       
+      # ✅ STEP 3: Force Gradle to use correct Kotlin version
+      - name: 🔧 Set Kotlin Gradle Plugin Version
+        run: |
+          echo "🔧 Setting Kotlin Gradle plugin version in gradle.properties..."
+          echo "kotlin.version=1.9.0" >> android/gradle.properties
+          echo "org.gradle.jvmargs=-Xmx4G" >> android/gradle.properties
+          echo "android.useAndroidX=true" >> android/gradle.properties
+          echo "android.enableJetifier=true" >> android/gradle.properties
+      
+      # ✅ STEP 4: Clean and build
       - name: Clean Build Cache
         run: |
           flutter clean
           rm -rf android/.gradle
+          rm -rf ~/.gradle/caches/
       
       - name: Build Release APK
         run: |
           echo "🚀 Building APK..."
+          echo "📋 Kotlin version in build.gradle:"
+          grep "ext.kotlin_version" android/build.gradle
+          echo ""
           flutter build apk --release --verbose
       
       - name: Upload APK
