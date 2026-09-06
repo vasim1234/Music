@@ -34,10 +34,9 @@ jobs:
           rm -f pubspec.lock
           echo "✅ Cache cleared and pubspec.lock deleted!"
       
-      # ✅ CRITICAL: Use audioplayers 6.1.0 (compatible with Kotlin 1.9.24)
-      - name: Fix pubspec.yaml with compatible versions
+      - name: Fix pubspec.yaml
         run: |
-          echo "🔧 Fixing pubspec.yaml with compatible versions..."
+          echo "🔧 Fixing pubspec.yaml..."
           cat > pubspec.yaml << 'EOF'
           name: music
           description: A local music player app
@@ -50,7 +49,7 @@ jobs:
           dependencies:
             flutter:
               sdk: flutter
-            audioplayers: ^6.1.0
+            audioplayers: ^5.2.1
             audiotags: ^1.4.2
             file_picker: ^8.0.0
             path_provider: ^2.1.4
@@ -66,7 +65,7 @@ jobs:
           flutter:
             uses-material-design: true
           EOF
-          echo "✅ pubspec.yaml with audioplayers 6.1.0 fixed!"
+          echo "✅ pubspec.yaml with audioplayers 5.2.1 fixed!"
       
       - name: Recreate Android Folder
         run: |
@@ -149,17 +148,17 @@ jobs:
           }
           
           dependencies {
-              implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.24"
+              implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.7.1"
           }
           EOF
           echo "✅ app/build.gradle fixed!"
       
-      - name: Fix root build.gradle
+      - name: Fix root build.gradle with Kotlin 1.7.1
         run: |
-          echo "🔧 Fixing root build.gradle..."
+          echo "🔧 Fixing root build.gradle with Kotlin 1.7.1..."
           cat > android/build.gradle << 'EOF'
           buildscript {
-              ext.kotlin_version = '1.9.24'
+              ext.kotlin_version = '1.7.1'
               repositories {
                   google()
                   mavenCentral()
@@ -186,7 +185,7 @@ jobs:
               delete rootProject.buildDir
           }
           EOF
-          echo "✅ root build.gradle fixed!"
+          echo "✅ root build.gradle with Kotlin 1.7.1 fixed!"
       
       - name: Fix AndroidManifest.xml package name
         run: |
