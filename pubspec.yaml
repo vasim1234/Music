@@ -24,11 +24,52 @@ jobs:
           flutter-version: '3.19.6'
           channel: 'stable'
       
+      # ✅ DIRECT FIX: Overwrite pubspec.yaml with correct name
       - name: Fix Package Name
         run: |
-          echo "Fixing package name: Music -> music"
-          sed -i 's/name: Music/name: music/g' pubspec.yaml
-          echo "✅ Package name fixed!"
+          echo "🔧 Force fixing package name in pubspec.yaml..."
+          
+          # Directly replace the name line
+          sed -i '1s/name:.*/name: music/' pubspec.yaml
+          
+          # Verify the fix
+          echo "📋 First line of pubspec.yaml:"
+          head -1 pubspec.yaml
+          
+          if grep -q "name: music" pubspec.yaml; then
+            echo "✅ Package name fixed to 'music'!"
+          else
+            echo "❌ Package name not fixed! Trying alternative method..."
+            cat > pubspec.yaml << 'EOF'
+          name: music
+          description: A local music player app
+          publish_to: 'none'
+          version: 1.0.0+1
+          
+          environment:
+            sdk: ">=3.0.0 <4.0.0"
+          
+          dependencies:
+            flutter:
+              sdk: flutter
+            audioplayers: ^6.0.0
+            audiotags: ^1.4.2
+            file_picker: ^8.0.0
+            path_provider: ^2.1.4
+            permission_handler: ^11.3.1
+            shared_preferences: ^2.2.2
+            flutter_local_notifications: ^17.1.2
+          
+          dev_dependencies:
+            flutter_test:
+              sdk: flutter
+            flutter_lints: ^4.0.0
+          
+          flutter:
+            uses-material-design: true
+          EOF
+            echo "✅ pubspec.yaml completely rewritten with correct name!"
+          fi
       
       - name: Recreate Android Folder
         run: |
@@ -40,7 +81,7 @@ jobs:
           
           echo "✅ Android folder created!"
       
-      - name: Add Storage Permissions to AndroidManifest.xml
+      - name: Add Storage Permissions
         run: |
           echo "Adding permissions to AndroidManifest.xml..."
           
@@ -53,10 +94,6 @@ jobs:
           \    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' android/app/src/main/AndroidManifest.xml
           
           echo "✅ Permissions added!"
-          
-          # Verify permissions were added
-          echo "📋 Verifying permissions:"
-          grep "uses-permission" android/app/src/main/AndroidManifest.xml || echo "⚠️ No permissions found"
       
       - name: Get Dependencies
         run: flutter pub get
