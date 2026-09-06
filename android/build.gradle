@@ -1,5 +1,5 @@
 buildscript {
-    ext.kotlin_version = '1.9.0'  // ✅ 1.9.0 - NOT OLDER!
+    ext.kotlin_version = '1.9.0'  // ✅ FIX 2: 1.7.1 → 1.9.0
     repositories {
         google()
         mavenCentral()
