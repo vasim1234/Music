@@ -1,41 +1,72 @@
-- name: Add Storage Permissions
-  run: |
-    echo "Adding permissions to AndroidManifest.xml..."
+name: Build APK
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
     
-    # Read existing manifest and add permissions
-    cat > android/app/src/main/AndroidManifest.xml << 'EOFMANIFEST'
-    <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-        <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
-        <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
-        <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
-        <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
-        <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-        
-        <application
-            android:label="music"
-            android:name="${applicationName}"
-            android:icon="@mipmap/ic_launcher">
-            <activity
-                android:name=".MainActivity"
-                android:exported="true"
-                android:launchMode="singleTop"
-                android:theme="@style/LaunchTheme"
-                android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
-                android:hardwareAccelerated="true"
-                android:windowSoftInputMode="adjustResize">
-                <meta-data
-                    android:name="io.flutter.embedding.android.NormalTheme"
-                    android:resource="@style/NormalTheme"/>
-                <intent-filter>
-                    <action android:name="android.intent.action.MAIN"/>
-                    <category android:name="android.intent.category.LAUNCHER"/>
-                </intent-filter>
-            </activity>
-            <meta-data
-                android:name="flutterEmbedding"
-                android:value="2" />
-        </application>
-    </manifest>
-    EOFMANIFEST
-    
-    echo "✅ AndroidManifest.xml with permissions created!"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+      
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.6'
+          channel: 'stable'
+      
+      - name: Fix Package Name
+        run: |
+          echo "Fixing package name: Music -> music"
+          sed -i 's/name: Music/name: music/g' pubspec.yaml
+          echo "✅ Package name fixed!"
+      
+      - name: Recreate Android Folder
+        run: |
+          echo "Deleting empty android folder..."
+          rm -rf android
+          
+          echo "Let Flutter create a brand new Android project..."
+          flutter create --platforms=android .
+          
+          echo "✅ Android folder created!"
+      
+      - name: Add Storage Permissions to AndroidManifest.xml
+        run: |
+          echo "Adding permissions to AndroidManifest.xml..."
+          
+          # Use sed to insert permissions after <manifest> tag
+          sed -i '/<manifest /a\
+          \    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>\
+          \    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>\
+          \    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>\
+          \    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>\
+          \    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' android/app/src/main/AndroidManifest.xml
+          
+          echo "✅ Permissions added!"
+          
+          # Verify permissions were added
+          echo "📋 Verifying permissions:"
+          grep "uses-permission" android/app/src/main/AndroidManifest.xml || echo "⚠️ No permissions found"
+      
+      - name: Get Dependencies
+        run: flutter pub get
+      
+      - name: Build APK
+        run: flutter build apk --release
+      
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release
+          path: build/app/outputs/flutter-apk/app-release.apk
