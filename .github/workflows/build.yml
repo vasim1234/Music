@@ -9,7 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
       
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -23,25 +24,25 @@ jobs:
           flutter-version: '3.19.6'
           channel: 'stable'
       
-      # ✅ EKDM JADU SOLUTION: Android folder recreate karo
-      - name: Recreate Android Folder (The Magic Fix)
+      - name: Recreate Android Folder
         run: |
-          echo "Deleting empty android folder..."
+          echo "Deleting android folder..."
           rm -rf android
           
-          echo "Let Flutter create a brand new Android project..."
+          echo "Creating fresh Android project..."
           flutter create --platforms=android .
           
-          echo "Adding Storage Permissions back..."
-          cat >> android/app/src/main/AndroidManifest.xml << 'EOFPERM'
-          <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
-          <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
-          <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
-          <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
-          <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-          EOFPERM
-          
-          echo "✅ BRAND NEW ANDROID FOLDER CREATED WITH V2 EMBEDDING!"
+          echo "✅ Android folder created!"
+      
+      - name: Add Storage Permissions
+        run: |
+          echo "Adding permissions to AndroidManifest.xml..."
+          sed -i '/<manifest /a\
+          \    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>\
+          \    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>\
+          \    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>\
+          \    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>\
+          \    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' android/app/src/main/AndroidManifest.xml
       
       - name: Get Dependencies
         run: flutter pub get
