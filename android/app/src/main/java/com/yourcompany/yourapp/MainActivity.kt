@@ -1,5 +1,5 @@
 package com.yourcompany.yourapp
 
-import io.flutter.embedding.android.FlutterActivity  // ✅ CORRECT!
+import io.flutter.embedding.android.FlutterActivity
 
-class MainActivity: FlutterActivity()  // ← Must extend FlutterActivity
+class MainActivity: FlutterActivity()
